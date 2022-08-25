@@ -34,7 +34,7 @@ J(x) \leq 0 \iff x \in Target \quad \& \quad J(x) = 0 \iff x \in \partial Target
 
 See the demo HopfReachability.ipynb file
 
-## Further Work
+## Future Work
 
 We will expand this toolbox to handle problems that include, 
 - non-coupled controls
