@@ -3,7 +3,7 @@ module HopfReachability
 using LinearAlgebra, StatsBase
 using Plots, ImageFiltering, TickTock, Suppressor
 
-export Hopf_solve
+export Hopf_BRS
 
 ## Find points near boundary ∂ of f(x) = 0
 function boundary(solution; xg, N, δ = 5/N)
@@ -92,7 +92,7 @@ function Hopf_cd(system, target, quadrature, x; p2, opt_p, kkk=size(system[1])[1
 end
 
 ## Solve Hopf Problem for given system, target and lookback time(s) T
-function Hopf_BRS(system, target, T;  grid_p=(3, 0.5e-7, 10 + 0.5e-7, 0.02), opt_p=(0.01, 5, 0.5e-7, 500, 20), kkk=size(system[1])[1], p2=true, plotting=false, sampling=false)
+function Hopf_BRS(system, target, T;  grid_p=(3, 0.5e-7, 10 + 0.5e-7, 0.02), opt_p=(0.01, 5, 0.5e-7, 500, 20), kkk=size(system[1])[1], p2=true, plotting=false, sampling=false, samples=360)
 
     M, C, C2, Q, Q2, a1, a2 = system
     J, Js = target
@@ -103,7 +103,7 @@ function Hopf_BRS(system, target, T;  grid_p=(3, 0.5e-7, 10 + 0.5e-7, 0.02), opt
 
     ## generate grid (rewrite after debug)
     xg = collect(-bd : 1/N : bd)
-    XYvec = [[j,i] for (i,j) in collect(Iterators.product(xg .- ϵ, xg .+ ϵ))]
+    XYvec = [[j,i] for (i,j) in collect(Iterators.product(xg .- ϵ, xg .+ ϵ))[:]]
     solution = [J(cat(i,j,zeros(kkk-2), dims=1)) for (i,j) in XYvec]
     index = boundary(solution; xg, N)
 
@@ -143,8 +143,8 @@ function Hopf_BRS(system, target, T;  grid_p=(3, 0.5e-7, 10 + 0.5e-7, 0.02), opt
         end
 
         ## Loop Over Grid (near ∂ID)
-        grid_index = sampling ? sample(1:length(index),samples) : eachindex(index)
-        for kk in eachindex(grid_index)
+        index_pts = sampling ? sample(1:length(index),samples) : index # sample for speed test
+        for kk in eachindex(index_pts)
 
             x = XYvec[index[kk]]
             solution[index[kk]] = Hopf_cd(system, target, quadrature, x; p2, opt_p)
@@ -152,7 +152,7 @@ function Hopf_BRS(system, target, T;  grid_p=(3, 0.5e-7, 10 + 0.5e-7, 0.02), opt
             fnow = -solution[index[kk]]; # for printing?
         end
         
-        averagetime = tok()/length(index); #note this includes lll iterations of guesses per point
+        averagetime = tok()/length(index_pts); #note this includes lll iterations of guesses per point
 
         ## Plot Safe-Set at Checkpoint  (unneccesary in speed test)
         if plotting
