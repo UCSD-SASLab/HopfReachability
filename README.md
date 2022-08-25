@@ -36,4 +36,14 @@ See the demo HopfReachability.ipynb file
 
 ## Further Work
 
-We will expand this toolbox to allow non-coupled controls and someday nonlinear systems (which are still not guaranteed but have conjectured algorithms) as well as include functions which compute the optimal control from the Hopf formula for a single point in space. Moreover, we will build the ability to utilize the other optimization methods (ADM/PDHG) which have been shown to vastly improve the number of optimization reinitializations as well as manually enter the gradient. Finally, we will invlude the ability to parallelize the grid solving.
+We will expand this toolbox to handle problems that include, 
+- non-coupled controls
+- nonlinear systems (which are still not guaranteed but have conjectured algorithms)
+- which only care about finding the optimal control for a single point in space
+
+On the solver side, we will build the ability to 
+- utilize the other optimization methods (ADM/PDHG) which have been shown to vastly improve the number of optimization reinitializations 
+- manually enter the gradient. 
+- autodiff the gradient
+- parallelize the grid solving
+- render 3D target sets
