@@ -20,7 +20,7 @@ end
 function Hopf(system, target, tbH, z, v; p2, kkk=size(system[1])[1])
 
     J, Jˢ, Az = target
-    intH, Hdata = tbH J
+    intH, Hdata = tbH
 
     return Jˢ(v; Az) - z'view(v,1:2) + intH(system, Hdata; p2);
 end
@@ -225,6 +225,7 @@ end
 
 ### Example 1 
 
+## Time integral of Hamiltonian for YTC et al. 2017, quadratic control constraints
 function intH_ytc17(system, Hdata; p2, kkk=size(system[1])[1])
 
     M, C, C2, Q, Q2, a1, a2 = system
@@ -244,11 +245,12 @@ function intH_ytc17(system, Hdata; p2, kkk=size(system[1])[1])
     return H1 + H2
 end
 
+## Hamiltonian Precomputation
 function preH_ytc17(system, tvec)
 
     M, C, C2, Q, Q2 = system
 
-    ## Precomputing Transformation Mats R := (exp(-(T-t)M)C)'
+    ## Transformation Mats R := (exp(-(T-t)M)C)' over t
     Rt, R2t = zeros(kkk, kkk*length(tvec)), zeros(kkk, kkk*length(tvec));
     for sstep in eachindex(tvec)
         Rt[:,kkk*(sstep-1) + 1 : kkk*sstep] = (exp(-(tvec[end] - tvec[sstep]) * M) * C)';
@@ -264,11 +266,25 @@ function preH_ytc17(system, tvec)
     return Rt, R2t, G, G2
 end
 
+## Optimal HJB Control
+function HJoc_ytc17(system, dϕdz, T; Hdata=nothing, kkk=size(system[1])[1])
+
+    M, C, C2, Q, Q2, a1, a2 = system
+
+    _,Σ,VV = svd(Q);
+    G = Diagonal(sqrt.(Σ)) * VV;
+    R = (exp(-T * M) * C)'
+
+return inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a1
+# ∇pH(dϕdz, Tˢ) = R_c' uˢ + R_d' dˢ => uˢ = R_c'^-1 * control_portion(∇pH(dϕdz, Tˢ)) [ytc 17] (?)
+# could be faster by using Hdata
+
 ##################################################################################################
 
 ### Example 2
 
-function intH_mk18(system, Hdata; p2, kkk=size(system[1])[1])
+## Time integral of Hamiltonian for MRK et al. 2018, inf-norm control constraints
+function intH_mrk18(system, Hdata; p2, kkk=size(system[1])[1])
 
     M, C, C2, Q, Q2 = system
     QRt, QR2t, tix, th = Hdata
@@ -287,11 +303,12 @@ function intH_mk18(system, Hdata; p2, kkk=size(system[1])[1])
     return H1 + H2
 end
 
-function preH_mk18(system, tvec; kkk=size(system[1])[1])
+## Hamiltonian Precomputation
+function preH_mrk18(system, tvec; kkk=size(system[1])[1])
 
     M, C, C2, Q, Q2 = system
 
-    ## Precomputing Transformation Mats Q * R := Q * (exp(-(T-t)M)C)'
+    ## Transformation Mats Q * R := Q * (exp(-(T-t)M)C)' over t
     QRt, QR2t = zeros(kkk, kkk*length(tvec)), zeros(kkk, kkk*length(tvec));
     for sstep in eachindex(tvec)
         QRt[:,kkk*(sstep-1) + 1 : kkk*sstep] = Q * (exp(-(tvec[end] - tvec[sstep]) * M) * C)';
@@ -301,12 +318,15 @@ function preH_mk18(system, tvec; kkk=size(system[1])[1])
     return QRt, QR2t
 end
 
-function HJoc_mk18(system, dϕdz, T; Hdata=nothing, kkk=size(system[1])[1])
+## Optimal HJB Control 
+function HJoc_mrk18(system, dϕdz, T; Hdata=nothing, kkk=size(system[1])[1])
 
     M, C, C2, Q, Q2 = system
-    QR = Q * (exp(-T * M) * C)'
+    RT = exp(-T * M) * C
+    QR = Q * RT'
 
-return QR * sign.(QR * dϕdz) #? I think, if separable
+return inv(RT) * QR * sign.(QR * dϕdz) 
+# ∇pH(dϕdz, Tˢ) = R_c' uˢ + R_d' dˢ => uˢ = R_c'^-1 * control_portion(∇pH(dϕdz, Tˢ)) [ytc 17] (?)
 
 ##################################################################################################
 
@@ -316,7 +336,7 @@ function preH_std(system, tvec)
 
     M, C, C2, Q, Q2 = system
 
-    ## Precomputing Transformation Mats R := (exp(-(T-t)M)C)'
+    ## Transformation Mats R := (exp(-(T-t)M)C)' over t
     Rt, R2t = zeros(kkk, kkk*length(tvec)), zeros(kkk, kkk*length(tvec));
     for sstep in eachindex(tvec)
         Rt[:,kkk*(sstep-1) + 1 : kkk*sstep] = (exp(-(tvec[end] - tvec[sstep]) * M) * C)';
