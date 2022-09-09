@@ -4,7 +4,7 @@
 
 using LinearAlgebra, Plots
 push!(LOAD_PATH,"/Users/willsharpless/Documents/Herbert/Koop_HJR/HL_fastHJR");
-using HopfReachabilityv2: Hopf_BRS, intH_ytc17, preH_ytc17, boundary, plot_BRS
+using HopfReachabilityv2: Hopf_BRS, intH_ytc17, preH_ytc17, boundary, plot_BRS_scatter, plot_BRS
 
 ## System
 # ẋ = Mx + Cu + C2d subject to y ∈ {(y-a)'Q(y-a) ≤ 1} for y=u,d
@@ -85,23 +85,22 @@ lll = 20
 opt_p = (vh, L, tol, lim, lll)
 
 ## Run the solver
-solution, averagetime = Hopf_BRS(system, target, intH_ytc17, T; 
-                                                    Xg,
-                                                    preH=preH_ytc17,
-                                                    grid_p,
-                                                    opt_p,
-                                                    printing=true,
-                                                    plotting=true,
-                                                    zplot=true);
-B⁺T, ϕB⁺T = solution;
+# solution, averagetime = Hopf_BRS(system, target, intH_ytc17, T; 
+#                                                     Xg,
+#                                                     preH=preH_ytc17,
+#                                                     grid_p,
+#                                                     opt_p,
+#                                                     printing=true,
+#                                                     plotting=true,
+#                                                     zplot=true);
+# B⁺T, ϕB⁺T = solution;
 
 using JLD
-# B⁺T, ϕB⁺T = load("HR_v2_solution.jld", "solution");
-# plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem = false, ϵplot = 0.1, zplot=true)
+B⁺T, ϕB⁺T = load("HR_v2_solution.jld", "solution");
+plot_BRS_scatter(T, B⁺T, ϕB⁺T; M, simple_problem = false, ϵ = 0.1, zplot=true)
 
-# using JLD
-# save("HR_v2_solution_3.jld", "solution", solution)
+using ScatteredInterpolation
+plots = plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem = false, cres=0.01, zplot=true, contour=true, inter_method=Polyharmonic());
 
-# B⁺T, ϕB⁺T = load("HR_v2_solution.jld", "solution");
-plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem = false, ϵ = 0.1, zplot=true)
+
 

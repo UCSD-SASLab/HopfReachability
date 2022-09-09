@@ -1,6 +1,6 @@
 module HopfReachabilityv2
 
-using LinearAlgebra, StatsBase
+using LinearAlgebra, StatsBase, ScatteredInterpolation
 using Plots, ImageFiltering, TickTock, Suppressor
 
 ## Evaluate Hopf Cost
@@ -311,78 +311,67 @@ function plot_BRS_scatter(T, B⁺T, ϕB⁺T; M, simple_problem, ϵ = 0.1, zplot=
 end
 
 ## Plots BRS over T in X and Z space (contour)
-function plot_BRS_contour(T, B⁺T, ϕB⁺T; M, simple_problem, ϵ = 0.1, zplot=true)
+function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, zplot=true, contour=false, inter_method=Polyharmonic())
 
     Xplot = plot(title="BRS of T, in X") 
     if zplot; Zplot = plot(title="BRS of T, in Z"); end
+    plots = zplot ? [Xplot, Zplot] : [Xplot]
+
     ϕlabels = "ϕ(⋅,-" .* string.(T) .* ")"
+    simple_labels = vcat("J(⋅)", ϕlabels) # length(T) + 1
+    Jlabels = "J(⋅, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
+    moving_labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
+
     Tcolors = palette([:red, :blue], length(T))
+    B0colors = palette([:black, :gray], length(T))
 
-    # solution_sq = reshape(solution, length(xg), length(xg));
-    # tcolor = RGB(1- Ti/size(T,1), (Ti/size(T,1)-0.5).^2,  Ti/size(T,1));
-    # contour!(xg .+ ϵ, xg .- ϵ, solution_sq, levels=[-ϵ, ϵ], colorbar = false, lc = tcolor);
-    
-    if simple_problem
-        labels = vcat("J(⋅)", ϕlabels) # length(T) + 1
-        colors = [:black, Tcolors...]
+    I = simple_problem ? (1 : length(T)+1) : (1 : 2 : 2*length(T))
+    j = 1
 
-        for i = 1 : length(T) + 1 # first is Target
-            B⁺, ϕB⁺ = B⁺T[i], ϕB⁺T[i]
-            B = B⁺[:, abs.(ϕB⁺) .< ϵplot]
-            Bz = exp(-[Ti] * M) * B
+    for i in I
+        B⁺, ϕB⁺0, ϕB⁺ = simple_problem ? (B⁺T[i], 0, ϕB⁺T[i]) : (B⁺T[i], ϕB⁺T[i], ϕB⁺T[i+1]) # B⁺0 = B⁺ for any Ti
+        ϕs = simple_problem ? [ϕB⁺] : [ϕB⁺0, ϕB⁺]
+        B⁺z = exp(-T[j] * M) * B⁺
 
-            ## Plot
-            scatter!(Xplot, B[1,:], B[2,:], label=labels[i], markersize=1.5, markercolor=colors[i], markerstrokewidth=0)
-            if zplot; scatter!(Zplot, Bz[1,:], Bz[2,:], label=labels[i], markersize=1.5, markercolor=colors[i], markerstrokewidth=0); end
-        end
+        Bs = zplot ? [B⁺, B⁺z] : [B⁺]
 
-    else # moving target and/or grid
-        Jlabels = "J(⋅," .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
-        labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
-        B0colors = palette([:black, :gray], length(T))
+        for (bi, b⁺) in enumerate(Bs)
+            for (ϕi, ϕ) in enumerate(ϕs)
 
-        for i = 1 : 2 : 2*length(T)
-            B⁺, ϕB⁺0, ϕB⁺ = B⁺T[i], ϕB⁺T[i], ϕB⁺T[i+1] # B⁺0 = B⁺ for any Ti
-            # B0, B = B⁺[:, abs.(ϕB⁺0) .< ϵplot], B⁺[:, abs.(ϕB⁺) .< ϵplot]
-            # Bz0, Bz = exp(-T[Int((i+1)/2)] * M) * B0, exp(-T[Int((i+1)/2)] * M) * B
-            B⁺z = exp(-T[Int((i+1)/2)] * M) * B⁺
+                if contour == false
+                    ## Find Boundary in Near-Boundary
+                    b = b⁺[:, abs.(ϕ) .< ϵs]
 
+                    ## Plot Scatter
+                    color = simple_problem ? [:black, Tcolors...][i] : (ϕi == 1 ? B0colors[j] : Tcolors[j])
+                    label = simple_problem ? simple_labels[i] : moving_labels[i]
+                    scatter!(plots[bi], b[1,:], b[2,:], label=label, markersize=2, markercolor=color, markerstrokewidth=0)
+                
+                else
+                    ## Make Grid
+                    xg = collect(minimum(b⁺[1,:]) : cres : maximum(b⁺[1,:]))
+                    yg = collect(minimum(b⁺[2,:]) : cres : maximum(b⁺[2,:]))
+                    G = hcat(collect.(Iterators.product(xg, yg))...)'
+                    
+                    ## Construct Interpolation
+                    itp = interpolate(inter_method, b⁺, ϕ)
+                    itpd = evaluate(itp, G')
+                    iϕG = reshape(itpd, length(xg), length(yg))'
 
-            Bs = zplot ? [B⁺, B⁺z] : [B⁺]
-            plotlist = zplot ? [Xplot, Zplot] : [Xplot]
-            for (bi, b) in enumerate(Bs)
-                for ϕ in [ϕB⁺0, ϕB⁺]
-
-                    ## Make Fitting Grid 
-                    # Find all dx, dy in b and take greatest common factor: ddx, ddy
-                    # Find min/max x, min/max y in b
-                    # xg = min x : ddx : max x, yg = ...
-
-                    ## Fill Grid Solution Sq
-                    # make solution_sq = 10-grid with size of len(xg) by len(yg)
-                    # for each (ix, (xi,yi)) in enumerate(b)
-                    #   solution_sq[findfirst(xg, xi), findfirst(yg, yi)] = ϕ[ix]
-                    # end 
-
-                    ## Plot
-                    # contour!(plotlist[bi], xg, yg, solution_sq, levels=[-ϵ, ϵ], colorbar = false, lc = tcolor);
+                    ## Plot Contour
+                    color = simple_problem ? [:black, Tcolors...][i] : (ϕi == 1 ? B0colors[j] : Tcolors[j])
+                    contour!(plots[bi], xg, yg, iϕG, levels=[-ϵc, ϵc], colorbar = false, lc=color, lw=2)
                 end
-
-
-            ## Plot
-            
-            
-            
-            # scatter!(Xplot, B0[1,:], B0[2,:], label=labels[i], markersize=2, markercolor=B0colors[Int((i+1)/2)], markerstrokewidth=0, markershape=:square)
-            # if zplot; scatter!(Zplot, Bz0[1,:], Bz0[2,:], label=labels[i], markersize=2, markercolor=B0colors[Int((i+1)/2)], markerstrokewidth=0, markershape=:square); end
-
-            # scatter!(Xplot, B[1,:], B[2,:], label=labels[i+1], markersize=1.5, markercolor=Tcolors[Int((i+1)/2)], markerstrokewidth=0)
-            # if zplot; scatter!(Zplot, Bz[1,:], Bz[2,:], label=labels[i+1], markersize=1.5, markercolor=Tcolors[Int((i+1)/2)], markerstrokewidth=0); end
+            end
         end
+
+        j+=1
     end
 
     display(Xplot)
     if zplot; display(Zplot); end
+
+    return plots
 end
 
 ##################################################################################################
