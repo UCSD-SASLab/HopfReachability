@@ -6,20 +6,20 @@ using Plots, ImageFiltering, TickTock, Suppressor
 ## Evaluate Hopf Cost
 function Hopf(system, target, tbH, z, v; p2, kkk=size(system[1])[1])
 
-    J, Jˢ, Az = target
+    J, Jˢ, Jp = target
     intH, Hdata = tbH
 
-    return Jˢ(v, Az) - z'view(v,1:2) + intH(system, Hdata, v; p2);
+    return Jˢ(v, Jp...) - z'view(v,1:2) + intH(system, Hdata, v; p2);
 end
 
 ## Iterative Coordinate Descent of the Hopf Cost at Point z
 function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, kkk=size(system[1])[1])
 
-    vh, L, tol, lim, lll = opt_p
-    solni, v = -Inf, nothing
+    vh, L, tol, lim, lll, max_runs = opt_p
+    solution, v = 1e9, nothing
 
-    # Loop over Hopf optimizations (coordinate descents)
-    for ll = 1:lll
+    converged_runs, runs = 0, 0
+    while converged_runs < lll
 
         v = isnothing(v_init) ? 10*(rand(kkk) .- 0.5) : v_init # Hopf optimizer variable
         kcoord = kkk; # coordinate counter
@@ -50,36 +50,42 @@ function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, kkk=size(sys
             happycount, L = happycount > lim ? (1, L*2) : (happycount+1, L); 
 
             if stopcount == kkk # in thresh for all coordinates
-                # why are these all negative????
-                solni = -min(-solni, fnow) # min with iter, to overcome potential local convergence
+                if -1e9 < fnow && fnow < 1e9
+                    solution = min(solution, fnow) # min with iter, to overcome potential local convergence
+                    converged_runs += 1
+                end
+
                 break
             end
 
             fnow = fnownow;
         end
+
+        if runs > max_runs 
+            if converged_runs > 0
+                println("Caution only ", 100*converged_runs/max_runs, "% of runs converged.")
+                break
+            else
+                error("All optimization runs diverged! :(")
+            end
+        else
+            runs += 1
+        end
     end
 
-    if isnothing(v)
-        error("dϕdz has not overwritten")
-    end
-
-    if solni == -Inf
-        error("Solution is -Inf ?")
-    end
-
-    return solni, v
+    return solution, v
 end
 
 ## Solve Hopf Problem for given system, target and lookback time(s) T
-function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=(0.01, 5, 0.5e-7, 500, 20), kkk=size(system[1])[1], p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false)
+function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=(0.01, 5, 0.5e-7, 500, 20), kkk=size(system[1])[1], p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true)
 
     ## Initialize
-    moving_target = typeof(target[3]) <: Matrix ? false : true
-    moving_grid = typeof(Xg) <: Matrix ? false : true
+    moving_target = typeof(target[3][1]) <: Matrix ? false : true
+    moving_grid = typeof(Xg) <: Matrix ? true : false
     simple_problem = !moving_grid && !moving_target
 
-    J, Jˢ, A = target
-    M = system[1]
+    J, Jˢ, Jp = target
+    M, A, c = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T = [], [], [], [], [], [] 
     averagetime, N, lg = 0, 0, 0
@@ -87,9 +93,10 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
     ## Grid Set Up
     if isnothing(Xg)
         bd, N = grid_p
-        xig = collect(-bd : 1/N : bd); lg = length(xig)
-        # Xg = [[j,i] for (i,j) in collect(Iterators.product(xig .- ϵ, xig .+ ϵ))[:]]
+        lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
+        xig = collect(lb : 1/N : ub); lg = length(xig)
         Xg = hcat(collect.(Iterators.product(xig .- ϵ, xig .+ ϵ))...)[end:-1:1,:] #takes a while in REPL, but not when timed...
+        
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # fix!
@@ -98,9 +105,14 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
 
     ## Compute Near-Boundary set of Target in X
     if simple_problem
-        ϕX = J(vcat(Xg, zeros(kkk-2, lg^2)), A)#plotting in z bcuz ytc paper in z
-        index = boundary(ϕX; lg, N)
-        B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
+
+        ϕX = J(vcat(Xg, zeros(kkk-2, lg^2)), A, c)
+        if check_all
+            B⁺, ϕB⁺, index = Xg, ϕX, collect(1:length(ϕX))
+        else
+            index = boundary(ϕX; lg, N)
+            B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
+        end
 
         push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺)) # for plotting ϕ0
     end
@@ -113,7 +125,7 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
 
         Ti = T[Tix]
         Xgi = !moving_grid ? Xg : Xg[Tix]
-        Ai = !moving_target ? A : A[Tix]
+        Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
         tix = findfirst(abs.(t .-  Ti) .< th/2);
         if printing; println("   for t=-", Ti, "..."); end
         
@@ -122,22 +134,25 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
             Ni = moving_grid ? N[Tix] : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            ϕX = J(vcat(Xgi, zeros(kkk-2, size(Xgi)[2])), Ai)
-            index = boundary(ϕX; lg=lgi, N=Ni)
-            B⁺, ϕB⁺ = Xgi[:, index], ϕX[index]
+            ϕX = J(vcat(Xgi, zeros(kkk-2, size(Xgi)[2])), Ai, ci)
+            if check_all
+                B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
+            else
+                index = boundary(ϕX; lgi, Ni)
+                B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
+            end
 
-            push!(B⁺T, copy(B⁺))
-            push!(ϕB⁺T, copy(ϕB⁺))
+            push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺))
+        end
+
+        if isempty(index)
+            # error("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
+            if printing; println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ)); end
         end
 
         ## Map X to Z
-        B⁺z = exp(-Ti * M) * B⁺
-        Az = exp(Ti * M)' * Ai * exp(Ti * M) #A → Az so J, Jˢ → Jz, Jˢz
-        target = (J, Jˢ, Az)
-
-        if isempty(index)
-            error("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
-        end
+        B⁺z = exp(Ti * M) * vcat(B⁺, zeros(kkk-2, size(B⁺)[2]))
+        target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
         Hdata = (Hmats..., tix, th)
@@ -146,24 +161,22 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
         @suppress begin; tick(); end # timing
 
         ## Loop Over Grid (near ∂ID)
-        ϕB⁺before = copy(ϕB⁺)
-        
         index_pts = sampling ? sample(1:length(index),samples) : eachindex(index) # sample for speed test
         for bi in index_pts
-            z = B⁺z[:, bi]
+            z = B⁺z[1:2, bi]
             ϕB⁺[bi], dϕdz = Hopf_cd(system, target, z; p2, tbH, opt_p)
         end
 
         averagetime = tok()/length(index_pts); #includes lll reopts/pt
 
         ## Store Near-Boundary solution
-        push!(B⁺T, copy(B⁺))
+        push!(B⁺T, copy(B⁺)) #
         push!(ϕB⁺T, copy(ϕB⁺))
 
         ## Update Near-Boundary index to intermediate solution
-        if simple_problem && Tix != length(T)
+        if simple_problem && Tix != length(T) && !check_all
             ϕX[index] = ϕB⁺
-            index = boundary(ϕX; lg=lgi, N=Ni)
+            index = boundary(ϕX; lg, N)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index]
         end
     end
@@ -171,6 +184,8 @@ function Hopf_BRS(system, target, intH, T; preH=preH_std, Xg=nothing, ϵ=0.5e-7,
     if plotting; plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, zplot); end
     if printing; println("MEAN TIME: ", averagetime); end
 
+    ## Return arrays of B⁺ over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
+    # if moving problem, target inserted at each Ti (2 * length(T) arrays)
     return (B⁺T, ϕB⁺T), averagetime
 end
 
@@ -255,7 +270,7 @@ end
 
 
 ## Find points near boundary ∂ of f(z) = 0
-function boundary(ϕ; lg, N, δ = 5/N)
+function boundary(ϕ; lg, N, δ = 40/N)
 
     A = Float64.(abs.(reshape(ϕ, lg, lg)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     B = 1/(N/2)^2 * ones(Int(floor(N/2)),Int(floor(N/2))); # kernel
@@ -265,107 +280,68 @@ function boundary(ϕ; lg, N, δ = 5/N)
     return findall(ind[:] .> 0); # index of XY near ∂ID
 end
 
-## Plots BRS over T in X and Z space (scatter)
-function plot_BRS_scatter(T, B⁺T, ϕB⁺T; M, simple_problem, ϵ = 0.1, zplot=true)
-
-    Xplot = plot(title="BRS of T, in X") 
-    if zplot; Zplot = plot(title="BRS of T, in Z"); end
-    ϕlabels = "ϕ(⋅,-" .* string.(T) .* ")"
-    Tcolors = palette([:red, :blue], length(T))
-    
-    if simple_problem
-        labels = vcat("J(⋅)", ϕlabels) # length(T) + 1
-        colors = [:black, Tcolors...]
-
-        for i = 1 : length(T) + 1 # first is Target
-            B⁺, ϕB⁺ = B⁺T[i], ϕB⁺T[i]
-            B = B⁺[:, abs.(ϕB⁺) .< ϵ]
-            Bz = exp(-[Ti] * M) * B
-
-            ## Plot
-            scatter!(Xplot, B[1,:], B[2,:], label=labels[i], markersize=1.5, markercolor=colors[i], markerstrokewidth=0)
-            if zplot; scatter!(Zplot, Bz[1,:], Bz[2,:], label=labels[i], markersize=1.5, markercolor=colors[i], markerstrokewidth=0); end
-        end
-
-    else # moving target and/or grid
-        Jlabels = "J(⋅," .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
-        labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
-        B0colors = palette([:black, :gray], length(T))
-
-        for i = 1 : 2 : 2*length(T)
-            B⁺, ϕB⁺0, ϕB⁺ = B⁺T[i], ϕB⁺T[i], ϕB⁺T[i+1] # B⁺0 = B⁺ for any Ti
-            B0, B = B⁺[:, abs.(ϕB⁺0) .< ϵ], B⁺[:, abs.(ϕB⁺) .< ϵ]
-            Bz0, Bz = exp(-T[Int((i+1)/2)] * M) * B0, exp(-T[Int((i+1)/2)] * M) * B
-
-            ## Plot
-            scatter!(Xplot, B0[1,:], B0[2,:], label=labels[i], markersize=2, markercolor=B0colors[Int((i+1)/2)], markerstrokewidth=0, markershape=:square)
-            if zplot; scatter!(Zplot, Bz0[1,:], Bz0[2,:], label=labels[i], markersize=2, markercolor=B0colors[Int((i+1)/2)], markerstrokewidth=0, markershape=:square); end
-
-            scatter!(Xplot, B[1,:], B[2,:], label=labels[i+1], markersize=1.5, markercolor=Tcolors[Int((i+1)/2)], markerstrokewidth=0)
-            if zplot; scatter!(Zplot, Bz[1,:], Bz[2,:], label=labels[i+1], markersize=1.5, markercolor=Tcolors[Int((i+1)/2)], markerstrokewidth=0); end
-        end
-    end
-
-    display(Xplot)
-    if zplot; display(Zplot); end
-end
-
 ## Plots BRS over T in X and Z space (contour)
-function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, zplot=true, contour=false, inter_method=Polyharmonic())
+function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, zplot=false, contour=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue])
 
     Xplot = plot(title="BRS of T, in X") 
     if zplot; Zplot = plot(title="BRS of T, in Z"); end
     plots = zplot ? [Xplot, Zplot] : [Xplot]
-
+    B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
+    
     ϕlabels = "ϕ(⋅,-" .* string.(T) .* ")"
-    simple_labels = vcat("J(⋅)", ϕlabels) # length(T) + 1
     Jlabels = "J(⋅, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
-    moving_labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
+    labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
 
-    Tcolors = palette([:red, :blue], length(T))
-    B0colors = palette([:black, :gray], length(T))
+    Tcolors = length(T) > 1 ? palette(pal_colors, length(T)) : [pal_colors[2]]
+    B0colors = length(T) > 1 ? palette([:black, :gray], length(T)) : [:black]
+    colors = collect(Iterators.flatten(zip(B0colors, Tcolors)))
 
-    I = simple_problem ? (1 : length(T)+1) : (1 : 2 : 2*length(T))
-    j = 1
+    ## Zipping Target to Plot Variation in Z-space over Time (already done in moving problems)
+    if simple_problem && (length(T) > 1)
+        for i = 3 : 2 : 2*length(T)
+            insert!(B⁺Tc, i, B⁺T[1])
+            insert!(ϕB⁺Tc, i, ϕB⁺T[1])
+        end
+    end
 
-    for i in I
-        B⁺, ϕB⁺0, ϕB⁺ = simple_problem ? (B⁺T[i], 0, ϕB⁺T[i]) : (B⁺T[i], ϕB⁺T[i], ϕB⁺T[i+1]) # B⁺0 = B⁺ for any Ti
-        ϕs = simple_problem ? [ϕB⁺] : [ϕB⁺0, ϕB⁺]
-        B⁺z = exp(-T[j] * M) * B⁺
-
-        Bs = zplot ? [B⁺, B⁺z] : [B⁺]
+    for (j, i) in enumerate(1 : 2 : 2*length(T))        
+        B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
+        Bs = zplot ? [B⁺0, B⁺, exp(-T[j] * M) * B⁺0, exp(-T[j] * M) * B⁺] : [B⁺0, B⁺]
 
         for (bi, b⁺) in enumerate(Bs)
-            for (ϕi, ϕ) in enumerate(ϕs)
+            if simple_problem && bi == 1 && i !== 1; continue; end
 
-                if contour == false
-                    ## Find Boundary in Near-Boundary
-                    b = b⁺[:, abs.(ϕ) .< ϵs]
+            ϕ = bi % 2 == 1 ? ϕB⁺0 : ϕB⁺
 
-                    ## Plot Scatter
-                    color = simple_problem ? [:black, Tcolors...][i] : (ϕi == 1 ? B0colors[j] : Tcolors[j])
-                    label = simple_problem ? simple_labels[i] : moving_labels[i]
-                    scatter!(plots[bi], b[1,:], b[2,:], label=label, markersize=2, markercolor=color, markerstrokewidth=0)
+            if contour == false
+
+                ## Find Boundary in Near-Boundary
+                b = b⁺[:, abs.(ϕ) .< ϵs]
+
+                ## Plot Scatter
+                label = simple_problem && i == 1 && bi == 1 ? "J(⋅)" : labels[i + (bi + 1) % 2]
+                scatter!(plots[Int(bi > 2) + 1], b[1,:], b[2,:], label=label, markersize=2, markercolor=colors[i + (bi + 1) % 2], markerstrokewidth=0)
+
+            else ## Scattter
+
+                ## Find Boundary in Near-Boundary
+                b = b⁺[:, abs.(ϕ) .< 20/sqrt(length(ϕ))]
+
+                ## Make Grid
+                xg = collect(minimum(b⁺[1,:]) : cres : maximum(b⁺[1,:]))
+                yg = collect(minimum(b⁺[2,:]) : cres : maximum(b⁺[2,:]))
+                G = hcat(collect.(Iterators.product(xg, yg))...)'
                 
-                else
-                    ## Make Grid
-                    xg = collect(minimum(b⁺[1,:]) : cres : maximum(b⁺[1,:]))
-                    yg = collect(minimum(b⁺[2,:]) : cres : maximum(b⁺[2,:]))
-                    G = hcat(collect.(Iterators.product(xg, yg))...)'
-                    
-                    ## Construct Interpolation
-                    itp = interpolate(inter_method, b⁺, ϕ)
-                    itpd = evaluate(itp, G')
-                    iϕG = reshape(itpd, length(xg), length(yg))'
+                ## Construct Interpolation
+                itp = interpolate(inter_method, b⁺, ϕ)
+                itpd = evaluate(itp, G')
+                iϕG = reshape(itpd, length(xg), length(yg))'
 
-                    ## Plot Contour
-                    color = simple_problem ? [:black, Tcolors...][i] : (ϕi == 1 ? B0colors[j] : Tcolors[j])
-                    contour!(plots[bi], xg, yg, iϕG, levels=[-ϵc, ϵc], colorbar = false, lc=color, lw=2)
-                end
+                ## Plot Contour
+                contour!(plots[Int(bi > 2) + 1], xg, yg, iϕG, levels=[-ϵc, ϵc], colorbar = false, lc=colors[i + (bi + 1) % 2], lw=2)
             end
+            # end
         end
-
-        j+=1
     end
 
     display(Xplot)
