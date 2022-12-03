@@ -4,7 +4,8 @@
 
 using LinearAlgebra, Plots, JLD
 push!(LOAD_PATH,"/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR");
-using HopfReachabilityv2: Hopf_BRS, intH_ytc17, preH_ytc17, plot_BRS
+using HopfReachability: Hopf_BRS, intH_ytc17, preH_ytc17, plot_BRS
+
 
 ########################################################################################
 ## Textbook Koopman System (Exact Linearizaton) - Autonomous
@@ -12,14 +13,13 @@ using HopfReachabilityv2: Hopf_BRS, intH_ytc17, preH_ytc17, plot_BRS
 
 μ, λ = -0.05, -1.
 
-## System
-# ẋ = Ax + Bu + Cd subject to y ∈ {(y-a)'Q(y-a) ≤ 1} for y=u,d
+## System: ẋ = Ax + Bu + Cd subject to y ∈ {(y-a)'Q(y-a) ≤ 1} for y=u,d
 dim = 2
 M = [λ -λ;
      0 2μ]
 B, C = [0. 1.; 2μ 0.], [0. 1.; 2μ 0.]
-Q, Q2 = zeros(dim,dim), zeros(dim,dim)
-a1, a2 = zeros(1, dim), zeros(1, dim)
+Q, Q2 = zeros(dim,dim), zeros(dim,dim) #Autonomous
+a1, a2 = zeros(1, dim), zeros(1, dim) #Autonomous
 
 system = (M, B, C, Q, Q2, a1, a2)
 
@@ -29,8 +29,7 @@ Th = 1.0
 Tf = 1.0
 T = collect(Th : Th : Tf)
 
-## Target
-# J(x) = 0 is the boundary of the target
+## Target: J(x) = 0 is the boundary of the target
 Ap = diagm(inv.(cat([1, 1], 0.5*ones(dim - 2), dims=1)).^2)
 cp = [5.; 5.]
 J(x::Vector, A, c) = ((x - c)' * A * (x - c))/2 - 0.5 #don't need yet
@@ -55,19 +54,20 @@ max_runs = 20
 opt_p = (vh, L, tol, lim, lll, max_runs)
 
 ## Run the solver
-solution, averagetime = Hopf_BRS(system, target, intH_ytc17, T; 
+solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T; 
                                                     preH=preH_ytc17,
                                                     th,
                                                     grid_p,
                                                     opt_p,
+                                                    warm=true,
                                                     check_all=true,
                                                     printing=true);
 B⁺T, ϕB⁺T = solution;
 
-# using JLD
 # save("KHR_test.jld", "solution", solution)
-# B⁺T, ϕB⁺T = load("HR_v2_solution.jld", "solution");
+# B⁺T, ϕB⁺T = load("KHR_solution.jld", "solution");
 
+plot = plot_BRS(T, B⁺T, ϕB⁺T; M);
 plot = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, contour=true);
 
 
@@ -99,14 +99,15 @@ function merge_series!(sp1::Plots.Subplot, sp2::Plots.Subplot)
 
 for (ri, r) in enumerate([0., 1., 5., 10.])
 
-     Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim))
+     Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim)) #Controlled and Disturbed
      system = (M, B, C, Q, Q2, a1, a2)
 
-     solution, averagetime = Hopf_BRS(system, target, intH_ytc17, T; 
+     solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T; 
                                                        preH=preH_ytc17,
                                                        th,
                                                        grid_p,
                                                        opt_p,
+                                                       warm=true,
                                                        check_all=true,
                                                        printing=true);
      B⁺T, ϕB⁺T = solution;
@@ -116,5 +117,3 @@ for (ri, r) in enumerate([0., 1., 5., 10.])
 end
 
 plot = merge_series!([plts[i][1] for i in eachindex(plts)]...)
-
-
