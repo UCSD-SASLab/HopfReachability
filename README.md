@@ -41,11 +41,14 @@ See the demo HopfReachability.ipynb file
 ## Future Work
 
 We will expand this toolbox to handle problems that include, 
-- nonlinear systems (which are still not guaranteed but have conjectured algorithms)
+- Partnership with linearization techniques such as Koopman lifting
+- nonlinear systems (which require generalized Hopf formula which is complex to optimize)
+- higher dimensional target spaces (currently 2D + 1 value in any higher dimension)
 
 On the solver side, we will build the ability to 
-- utilize the other optimization methods (ADM/PDHG) which have been shown to vastly improve the number of optimization reinitializations 
+- utilize the other optimization methods (PDHG) which have been shown to vastly improve the number of optimization reinitializations 
 - manually enter the gradient. 
 - autodiff the gradient
 - parallelize the grid solving
 - render 3D target sets
+- readily call this toolbox from Python and Matlab
