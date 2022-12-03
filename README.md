@@ -7,7 +7,7 @@ Currently, this method has been validated for problems with,
 
 Beware, if the differential game is nonconvex, ie. if the allowable disturbance exceeds the control set, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. However, we can check if an optimum is global (p(0) \in \partial J(x^*)) and if false, the optimizer reinitialized. In practice, the global optimum is found within a few guesses on average and does not affect the solution at any other point.
 
-Note, this package and its algorithms are in the early stages of development. The authors (Will Sharpless, Sylvia Herbert etc.) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideasto advance this package and look forward to collaboration.
+Note, this package and its algorithms are in the early stages of development. The authors (Will Sharpless & Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideasto advance this package and look forward to collaboration.
 
 ## Current Problem Formulation
 
