@@ -1,5 +1,5 @@
 
-### Hopf Reachability of Textbook Koopman Systems
+### Hopf Reachability of Textbook Koopman Systems (Exact Linearization)
 # wsharpless@ucsd.edu
 
 using LinearAlgebra, Plots, JLD
@@ -8,7 +8,7 @@ using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, p
 
 
 ########################################################################################
-## Textbook Koopman System (Exact Linearizaton) - Autonomous
+## 2D, Autonomous
 ########################################################################################
 
 μ, λ = -0.05, -1.
@@ -19,7 +19,7 @@ M = [λ -λ;
      0 2μ]
 B, C = [0. 1.; 2μ 0.], [0. 1.; 2μ 0.]
 Q, Q2 = zeros(dim,dim), zeros(dim,dim) #Autonomous
-a1, a2 = zeros(1, dim), zeros(1, dim) #Autonomous
+a1, a2 = zeros(1, dim), zeros(1, dim)
 
 system = (M, B, C, Q, Q2, a1, a2)
 
@@ -80,7 +80,7 @@ plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value
 
 
 ########################################################################################
-## Textbook Koopman System (Exact Linearizaton) - Controlled & Disturbed
+## 2D, Controlled & Disturbed
 ########################################################################################
 
 plts = []
@@ -133,7 +133,7 @@ plot_contours = merge_series!([plts[i][1] for i in eachindex(plts)]...)
 
 
 ########################################################################################
-## Textbook Koopman System (Exact Linearizaton) -  Higher Dimension, Autonomous
+## 3D, Autonomous
 ########################################################################################
 
 ## System: ẋ = Ax + Bu + Cd subject to y ∈ {(y-a)'Q(y-a) ≤ 1} for y=u,d
@@ -147,7 +147,7 @@ B = [ 0  0  1;
 C = copy(B)
 
 Q, Q2 = zeros(dim, dim), zeros(dim, dim) #Autonomous
-a1, a2 = zeros(1, dim), zeros(1, dim) #Autonomous
+a1, a2 = zeros(1, dim), zeros(1, dim)
 system = (M, B, C, Q, Q2, a1, a2)
 
 ## Time
@@ -198,32 +198,51 @@ plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, alpha=
 plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, alpha=0.2);
 
 
+
 ########################################################################################
-## Textbook Koopman System (Exact Linearizaton) -  Higher Dimension, Controlled
+## Speed Test - ND, Controlled & Disturbed
 ########################################################################################
 
-r = 5. 
-pal_colors = pal_colors_list[3]
+dims = collect(2:2:20)
+run_stats_dims = []
 
+r = 1. 
 th = 0.05
-Th = 1.0
-Tf = 1.0
-T = collect(Th : Th : Tf)
+T = [1.0]
 
-Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim)) #Controlled and Disturbed
-system = (M, B, C, Q, Q2, a1, a2)
+bd = (2, 8)
+ϵ = 0.5e-7
+N = 10 + ϵ
+grid_p = (bd, N)
 
-## Run the solver
-solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
-                                                    opt_method = Hopf_cd,
-                                                    preH = preH_ytc17,
-                                                    th,
-                                                    grid_p,
-                                                    opt_p,
-                                                    warm = false,
-                                                    check_all = true,
-                                                    printing = true);
-B⁺T, ϕB⁺T = solution;
+for dim in dims
+    println("\nFor ", dim, "...")
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1,  interpolate=false, alpha=0.1, pal_colors)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, alpha=0.5, pal_colors=["green", "green"]);
+    M = vcat(vcat(λ, -λ/(dim-1)*ones(dim-1))', hcat(zeros(dim-1), 2μ * diagm(ones(dim-1))))
+    B = vcat(vcat(zeros(dim-1), 1)', hcat(2μ * diagm(ones(dim-1)), zeros(dim-1)))
+    C = copy(B)
+
+    Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim)) #Controlled and Disturbed
+    a1, a2 = zeros(1, dim), zeros(1, dim)
+    system = (M, B, C, Q, Q2, a1, a2)
+
+    Ap = diagm(inv.(ones(dim)).^2)
+    cp = 5 * ones(dim)
+    target = (J, Js, (Ap, cp))
+
+    ## Run the solver
+    solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+                                                        opt_method = Hopf_cd,
+                                                        preH = preH_ytc17,
+                                                        th,
+                                                        grid_p,
+                                                        opt_p = opt_p_cd,
+                                                        check_all = true,
+                                                        sampling = true,
+                                                        samples = 1000,
+                                                        printing = true);
+    
+    push!(run_stats_dims, run_stats)
+end
+
+plot(dims, [run_stats_dims[i][2][1] for i=1:length(dims)], yerror=[run_stats_dims[i][3][1] for i=1:length(dims)], ylabel="Seconds", xaxis="Dimension", title="Computation Time per Point", label="HopfReachability.jl")

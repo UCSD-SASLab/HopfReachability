@@ -19,8 +19,8 @@ function Hopf(system, target, tbH, z, v; p2, dim=size(system[1])[1])
     J, Jˢ, Jp = target
     intH, Hdata = tbH
 
-    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2); ### MULTI-D FIX
-    # return Jˢ(v, Jp...) - z'view(v,1:2) + intH(system, Hdata, v; p2); ### MULTI-D FIX
+    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2); #
+    # return Jˢ(v, Jp...) - z'view(v,1:2) + intH(system, Hdata, v; p2); #
 end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
@@ -42,9 +42,8 @@ function Hopf_BRS(system, target, intH, T;
     end
 
     ## Initialize
-    # moving_target = typeof(target[3][1]) <: Matrix || typeof(target[3][1]) <: Vector || typeof(target[3][1]) <: Number ? false : true
-    # moving_grid = typeof(Xg) <: Matrix || isnothing(Xg) ? false : true
     simple_problem = !moving_grid && !moving_target
+    if sampling && !simple_problem; error("Predefine your sample grids"); end
 
     J, Jˢ, Jp = target
     M, A, c = system[1], Jp[1], Jp[2]
@@ -52,33 +51,39 @@ function Hopf_BRS(system, target, intH, T;
 
     ## Initialize Data
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T, v_init = [], [], [], [], [], [], nothing
-    averagetimes, pointstocheck, N, lg = [], [], 0, 0
+    averagetimes, stdtimes, pointstocheck, N, lg = [], [], [], 0, 0
 
     ## Grid Set Up
-    if isnothing(Xg)
+    if isnothing(Xg) && !sampling
+
         bd, N = grid_p
         lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
         xig = collect(lb : 1/N : ub) .+ ϵ; lg = length(xig)
-        Xg = hcat(collect.(Iterators.product([xig for i in 1:dim]...))...)[end:-1:1,:] ## MULTI-D FIX
-        # Xg = hcat(collect.(Iterators.product(xig .- ϵ, xig .+ ϵ))...)[end:-1:1,:] ## MULTI-D FIX
-        
-        #takes a while in REPL, but not when timed...
-        
-    elseif moving_grid
+        Xg = hcat(collect.(Iterators.product([xig for i in 1:dim]...))...)[end:-1:1,:] 
+    
+    elseif sampling
+
+        bd, N = grid_p
+        lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
+        Xg = (ub - lb) * rand(dim, samples) .+ lb
+
+    elseif moving_grid ## externally defined
+
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
-        N = [10 for i in eachindex(Xg)] # fix!
+        N = [10 for i in eachindex(Xg)] # improve someday
         lg = Int.([sqrt(size(Xg[i])[2])  for i in eachindex(Xg)])
+
     end
 
     ## Compute Near-Boundary set of Target in X
     if simple_problem
         
-        ϕX = J(Xg, A, c) ## MULTI-D FIX
-        # ϕX = J(vcat(Xg, zeros(dim-2, lg^2)), A, c) ## MULTI-D FIX
-        if check_all
+        ϕX = J(Xg, A, c) # fix for sparse boundary checking
+
+        if check_all || sampling
             B⁺, ϕB⁺, index = Xg, ϕX, collect(1:length(ϕX))
         else
-            index = boundary(ϕX; lg, N, dim=dim) ## MULTI-D FIX
+            index = boundary(ϕX; lg, N, dim=dim) # check high-d
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
         end
 
@@ -97,64 +102,64 @@ function Hopf_BRS(system, target, intH, T;
         Ti = T[Tix]
         tix = findfirst(abs.(t .-  Ti) .< th/2);
 
-        Xgi = !moving_grid ? Xg : Xg[Tix]
+        Xgi    = !moving_grid   ? Xg : Xg[Tix]
         Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
         
         ## Update Near-Boundary set for moving problems
         if moving_grid || moving_target
-            Ni = moving_grid ? N[Tix] : N
+            
+            Ni  = moving_grid ? N[Tix]  : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            ϕX = J(Xgi, Ai, ci) ## MULTI-D FIX
-            # ϕX = J(vcat(Xgi, zeros(dim-2, size(Xgi)[2])), Ai, ci) ## MULTI-D FIX
+            ϕX = J(Xgi, Ai, ci) 
+
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
-                index = boundary(ϕX; lg=lgi, N=Ni, dim=dim) ## MULTI-D FIX
+                index = boundary(ϕX; lg=lgi, N=Ni, dim=dim) 
                 B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
             end
 
             push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺))
         end
 
-        if isempty(index)
-            # error("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
-            if printing; println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ)); end
-        end
+        if isempty(index); println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ)); end
 
         ## Map X to Z
-        B⁺z = exp(Ti * M) * B⁺ ## MULTI-D FIX
-        # B⁺z = exp(Ti * M) * vcat(B⁺, zeros(dim-2, size(B⁺)[2])) ## MULTI-D FIX
+        B⁺z = exp(Ti * M) * B⁺ 
         target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
         Hdata = (Hmats, tix, th)
         tbH = (intH, Hdata)
 
-        @suppress begin; tick(); end # timing
-
-        ## Pre solve details
-        index_pts = sampling ? sample(1:length(index),samples) : eachindex(index) # sample for speed test
-
         ## Solve Over Grid (near ∂ID if !check_all)
-        for bi in index_pts
-            z = B⁺z[:, bi] ## MULTI-D FIX
-            # z = B⁺z[1:2, bi] ## MULTI-D FIX
+        pt_times = []
+        for bi in eachindex(index)
+            @suppress begin; tick(); end # timing
+
+            z = B⁺z[:, bi] 
             ϕB⁺[bi], dϕdz, opt_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
+            
             v_init = warm ? copy(dϕdz) : nothing
+            
+            push!(pt_times, tok())
         end
 
         ## Store Data
-        push!(averagetimes, tok()/length(index_pts));
-        push!(pointstocheck, length(index_pts));
+        push!(averagetimes, mean(pt_times));
+        push!(stdtimes, std(pt_times));
+        push!(pointstocheck, length(index));
         push!(B⁺T, copy(B⁺))
         push!(ϕB⁺T, copy(ϕB⁺))
 
         ## Update Near-Boundary index to intermediate solution
         if simple_problem && Tix != length(T) && !check_all
+
             ϕX[index] = ϕB⁺
             index = boundary(ϕX; lg, N, dim=dim)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index]
+            
         end
     end
     
@@ -163,8 +168,9 @@ function Hopf_BRS(system, target, intH, T;
     if plotting; plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, zplot); end
     if printing; println("TOTAL TIME: ", totaltime); end
     if printing; println("MEAN TIME[s] PER TIME POINT: ", averagetimes); end
+    if printing; println("STD DEV[s]   PER TIME POINT: ", stdtimes); end
     if printing; println("TOTAL POINTS PER TIME POINT: ", pointstocheck); end
-    run_stats = (totaltime, averagetimes, pointstocheck)
+    run_stats = (totaltime, averagetimes, stdtimes, pointstocheck)
 
     ## Return arrays of B⁺ over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
     # if moving problem, target inserted at each Ti (2 * length(T) arrays)
@@ -453,7 +459,7 @@ end
 ##################################################################################################
 
 ## Find points near boundary ∂ of f(z) = 0
-function boundary(ϕ; lg, N, δ = 20/N, dim=size(system[1])[1]) ## MULTI-D FIX
+function boundary(ϕ; lg, N, δ = 20/N, dim=size(system[1])[1]) 
 
     A = Float64.(abs.(reshape(ϕ, [lg for i=1:dim]...)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     # A = Float64.(abs.(reshape(ϕ, lg, lg)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
