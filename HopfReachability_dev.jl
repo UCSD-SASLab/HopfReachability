@@ -172,75 +172,72 @@ function Hopf_BRS(system, target, intH, T;
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
-function Hopf_minT(system, target, intH, HJoc, x; T_init=nothing, preH=preH_std, time_p=(0.02, 0.1, 1), opt_p=(0.01, 5, 0.5e-7, 500, 20), dim=size(system[1])[1], p2=true, printing=false)
+function Hopf_minT(system, target, intH, HJoc, x; 
+                  opt_method = Hopf_cd, preH=preH_std,
+                  T_init=nothing, v_init_=nothing,
+                  time_p=(0.02, 0.1, 1.), opt_p=nothing, 
+                  dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
 
-    J, Jˢ, A = target
+    if opt_method == Hopf_cd
+        opt_p = isnothing(opt_p) ? (0.01, 5, 0.5e-7, 500, 20, 20) : opt_p
+        admm = false
+    elseif opt_method == Hopf_admm
+        opt_p = isnothing(opt_p) ? (1e-4, 1e-4, 1e-5, 100) : opt_p 
+        admm = true
+    end
+
+    J, Jˢ, Jp = target
     th, Th, maxT = time_p
     t = isnothing(T_init) ? collect(th: th: Th) : collect(th: th: T_init)
-    moving_target = typeof(A) <: Matrix ? false : true
 
     ## Initialize ϕs
     ϕ, dϕdz = Inf, 0
-    v_init = nothing 
+    v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
 
     ## Precomputing some of H for efficiency
-    Hmats = preH(system, target, t)
+    Hmats = preH(system, target, t; opt_p, admm)
 
     ## Loop Over Time Frames until ϕ(z, T) > 0
     Thi = 0; Tˢ = t[end]
     while ϕ > 0
         if printing; println("   checking T =-", Tˢ, "..."); end
-        # tix = findfirst(abs.(t .-  Ti) .< th/2);
         tix = length(t)
-        Tix = Thi + 1 #assuming Thi == stepping in A
+        Tix = Thi + 1
 
-        ## A → Az so J, Jˢ → Jz, Jˢz
-        M = system[1]
-        if !(moving_target)
-            Az = exp(Tˢ * M)' * A * exp(Tˢ * M)
-        else
-            Az = exp(Tˢ * M)' * A[Tix] * exp(Tˢ * M)
-        end
-        z = exp(Tˢ * M) * x
-        target = (J, Jˢ, Az)
+        ## Support Moving Targets
+        Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
+        target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
         Hdata = (Hmats, tix, th)
         tbH = (intH, Hdata)
 
         ## Hopf-Solving to check current Tˢ
-        ϕ, dϕdz = Hopf_cd(system, target, z; p2, tbH, opt_p, v_init)
+        z = exp(Tˢ * system[1]) * x
+        ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
+        v_init = warm ? copy(dϕdz) : nothing
 
         ## Check if Tˢ yields valid ϕ
-        if ϕ <= 0
-            break
-        end        
+        if ϕ <= 0; break; end    
+        if Tˢ > maxT; println("!!! Not reachable under max time !!!"); break; end    
 
         ## Update the t, to increase Tˢ
-        Thi += 1; 
-        # t_ext = isnothing(T_init) ? collect((Thi-1)*Th + th: th: Thi*Th) : collect(T_init + (Thi-1)*Th + th: th: Thi*Th)
-        t_ext = collect(Tˢ + th : th : Tˢ + Th)
-        push!(t, t_ext...)
-        Tˢ = t[end]
+        t_ext = collect(Tˢ + th : th : Tˢ + Th); push!(t, t_ext...)
+        Tˢ, Thi = t[end], Thi + 1
 
         ## Extending previous precomputed Hdata for increased final time
-        exts = preH(system, target, t_ext)
-        Rt_ext = cat(Hmats[1], exts[1], dims=2) # Rt and R2t need to be first ***
-        R2t_ext = cat(Hmats[2], exts[2], dims=2)
-        Hmats = length(Hmats) == 2 ? (Rt_ext, R2t_ext) : (Rt_ext, R2t_ext, Hmats[3:end]...)
+        F_init = admm ? Hmats[end] : nothing
+        Hmats_ext = preH(system, target, t_ext; opt_p, admm, F_init)
+        Rt_ext, R2t_ext = Hmats_ext[1], Hmats_ext[2]
+        Rt, R2t  = vcat(Hmats[1], Rt_ext), vcat(Hmats[2], R2t_ext)
+        Hmats = (Rt, R2t, Hmats[3:end-1]..., Hmats_ext[end])
 
-        # v_init = dϕdz ??? if warm
-
-        if Tˢ > maxT
-            println("!!! Couldn't find a ϕ under max time")
-            break
-        end
     end
 
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
-    uˢ = HJoc(system, dϕdz, Tˢ)
+    uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
 
-    return ϕ, uˢ, Tˢ
+    return ϕ, uˢ, dˢ, Tˢ
 end
 
 
@@ -330,7 +327,7 @@ end
 function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
     ## Initialize
-    M, B, C, Q, Q2, a1, a2 = system
+    M, B, C, Q, Q2, a, a2 = system
     ρ, ρ2, tol, max_its = opt_p
     tix = tbH[2][2]
     Rt, R2t = tbH[2][1][1:2]
@@ -440,7 +437,7 @@ function update_v(z, ξ, ξ2, tbH, ρ, ρ2; dim=size(tbH[2][1][1])[2], dim_u=siz
         y += th * ((ρ * view(Rt, dim_u*(s-1)+1: dim_u*s,:)' * view(ξ,:,s) + (ρ2 * view(R2t, dim_d*(s-1)+1: dim_d*s,:)' * view(ξ2,:,s))))
     end
 
-    return F * y
+    return F * y # need to subtract c from RHS/y todo
 end
 
 
@@ -582,7 +579,7 @@ end
 ## Time integral of Hamiltonian for YTC et al. 2017, quadratic control constraints
 function intH_ytc17(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
-    M, C, C2, Q, Q2, a1, a2 = system
+    M, C, C2, Q, Q2, a, a2 = system
     Hmats, tix, th = Hdata
     Rt, R2t, G, G2 = Hmats
 
@@ -590,14 +587,14 @@ function intH_ytc17(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(sys
     Rvt, R2vt = reshape(view(Rt,1:dim_u*tix,:) * v, dim_u, tix), reshape(view(R2t,1:dim_d*tix,:) * v, dim_d, tix)
     
     ## Quadrature sum
-    H1 = th * (sum(map(norm, eachcol(G * Rvt))) + sum(a1 * Rvt)) # player 1 / control
+    H1 = th * (sum(map(norm, eachcol(G * Rvt))) + sum(a * Rvt)) # player 1 / control
     H2 = p2 ? th * (-sum(map(norm, eachcol(G2 * R2vt))) + sum(a2 * R2vt)) : 0 # player 2 / disturbance, opponent   
 
     return H1 + H2
 end
 
 ## Hamiltonian Precomputation
-function preH_ytc17(system, target, t; opt_p, admm=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_ytc17(system, target, t; opt_p, admm=false, F_init=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -608,7 +605,7 @@ function preH_ytc17(system, target, t; opt_p, admm=false, dim=size(system[1])[1]
     Rt, R2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
 
     ## Precomputing ADMM matrix
-    F = Jp[1] ## FIX FOR WHEN c != 0 (admm only)
+    F = isnothing(F_init) ? Jp[1] : inv(F_init) ## THIS ONLY WORKS WHEN c == 0 (admm only), ... unless we move c over todo
 
     for sstep in eachindex(t)
         R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
@@ -630,15 +627,19 @@ function preH_ytc17(system, target, t; opt_p, admm=false, dim=size(system[1])[1]
 end
 
 ## Optimal HJB Control
-function HJoc_ytc17(system, dϕdz, T; Hdata=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
-    M, C, C2, Q, Q2, a1, a2 = system
+    M, C, C2, Q, Q2, a, a2 = system
+    R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
 
     _,Σ,VV = svd(Q);
-    G = Diagonal(sqrt.(Σ)) * VV;
-    R = (exp(-T * M) * C)'
+    _,Σ2,VV2 = svd(Q2);
+    G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
 
-    return inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a1'
+    uˢ = inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' 
+    dˢ = p2 ? - (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(dim_d) #todo check if + or - a2'
+
+    return uˢ, dˢ
 end
 # ∇pH(dϕdz, Tˢ) = R_c' uˢ + R_d' dˢ => uˢ = R_c'^-1 * control_portion(∇pH(dϕdz, Tˢ)) [ytc 17] (?)
 # could be faster by using Hdata
@@ -662,7 +663,7 @@ function intH_mrk18(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(sys
 end
 
 ## Hamiltonian Precomputation
-function preH_mrk18(system, target, t; opt_p, admm=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_mrk18(system, target, t; opt_p, admm=false, F_init=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -670,7 +671,7 @@ function preH_mrk18(system, target, t; opt_p, admm=false, dim=size(system[1])[1]
     ρ, ρ2 = opt_p[1:2]
     
     ## Precomputing ADMM matrix
-    F = Jp[1]
+    F = isnothing(F_init) ? Jp[1] : inv(F_init) ## THIS ONLY WORKS WHEN c == 0 (admm only), ... unless we move c over todo
 
     ## Transformation Mats Q * R := Q * (exp(-(T-t)M)C)' over t
     QRt, QR2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
@@ -685,14 +686,17 @@ function preH_mrk18(system, target, t; opt_p, admm=false, dim=size(system[1])[1]
     return QRt, QR2t, F
 end
 
-## Optimal HJB Control 
-function HJoc_mrk18(system, dϕdz, T; Hdata=nothing, dim=size(system[1])[1])
+## Optimal HJB Control # todo: check graphically
+function HJoc_mrk18(system, dϕdz, T; Hdata=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
-    RT = exp(-T * M) * C
-    QR = Q * RT'
+    R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
+    QR, QR2 = Q * R, Q * R2
 
-    return inv(RT) * QR * sign.(QR * dϕdz)
+    uˢ = inv(R') * QR * sign.(QR * dϕdz)
+    dˢ = p2 ? - inv(R2') * QR2 * sign.(QR2 * dϕdz) : zeros(dim_d)
+
+    return uˢ, dˢ
 end
 # ∇pH(dϕdz, Tˢ) = R_c' uˢ + R_d' dˢ => uˢ = R_c'^-1 * control_portion(∇pH(dϕdz, Tˢ)) [ytc 17] (?)
 

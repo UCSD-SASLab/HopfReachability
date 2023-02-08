@@ -33,11 +33,11 @@ Tf = 0.8
 T = collect(Th : Th : Tf)
 
 ## Target: J(x) = 0 is the boundary of the target
-Ap = diagm([1.5, 1])
+Ap = diagm([1., 1.])
 cp = [0.; 0.]
 # Ap = diagm([1.5, 1, 1.])
 # cp = [0.; 0.; 0.]
-r = 2.0
+r = 1.0
 J(x::Vector, A, c) = ((x - c)' * inv(A) * (x - c))/2 - 0.5 * r^2 #don't need yet
 Js(v::Vector, A, c) = (v' * A * v)/2 + c'v + 0.5 * r^2
 J(x::Matrix, A, c) = diag((x .- c)' * inv(A) * (x .- c))/2 .- 0.5 * r^2
@@ -65,7 +65,7 @@ target = (J, Js, (Ap, cp))
 ## Grid Parameters
 bd = 3. # (-3, 3) for ellipse
 ϵ = 0.5e-7
-N = 3 + ϵ
+N = 10 + ϵ
 grid_p = (bd, N)
 
 ## Hopf ADMM Parameters (default)
@@ -89,13 +89,13 @@ solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
                                                     th,
                                                     grid_p,
                                                     opt_p=opt_p_cd,
-                                                    warm=false,
-                                                    check_all=true,
+                                                    warm=true,
+                                                    check_all=false,
                                                     printing=true);
 B⁺T, ϕB⁺T = solution;
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.01, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.01, interpolate=false, value_fn=false, alpha=0.5)
+plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5)
 
 # using ScatteredInterpolation, Plots, PlotlyJS
 # plotlyjs()
