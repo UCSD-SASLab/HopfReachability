@@ -1,4 +1,4 @@
-module HopfReachability_dev
+module HopfReachability
 
 using LinearAlgebra, StatsBase, ScatteredInterpolation
 using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS
@@ -237,7 +237,7 @@ function Hopf_minT(system, target, intH, HJoc, x;
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
     uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
 
-    return ϕ, uˢ, dˢ, Tˢ
+    return uˢ, dˢ, Tˢ, ϕ
 end
 
 
@@ -637,7 +637,7 @@ function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, dim=size(system[1]
     G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
 
     uˢ = inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' 
-    dˢ = p2 ? - (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(dim_d) #todo check if + or - a2'
+    dˢ = p2 ? - (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(dim_d)
 
     return uˢ, dˢ
 end

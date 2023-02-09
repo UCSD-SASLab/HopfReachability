@@ -4,8 +4,8 @@ plotlyjs()
 # push!(LOAD_PATH,"/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR");
 # using HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf
 
-include("/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR/HopfReachability_dev.jl");
-using .HopfReachability_dev: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf, Hopf_minT, HJoc_ytc17
+include("/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR/HopfReachability.jl");
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf, Hopf_minT, HJoc_ytc17
 
 ## Initialize (2D)
 M = [0. 1; -2 -3]
@@ -13,8 +13,8 @@ C = 0.5 * [1 0; 0 1]
 C2 = 0.5 * [2 0; 0 1]
 Q = 0.1 * 3 * [1 0; 0 1]
 Q2 = 0.2 * 2 * [1 0; 0 1]
-a1 = 0*[0.5 0.75]
-a2 = -0*[0.5 0]
+a1 = [0.5 0.75]
+a2 = [0.5 0]
 system = (M, C, C2, Q, Q2, a1, a2)
 
 ## Initialize (3D)
@@ -100,7 +100,7 @@ plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=1e-3, interpolate=true, alpha=
 ## Find Boundary Pts of one BRS for Time of Interest
 Toi = 0.4
 Tix = findfirst(abs.(T .- Toi) .< Th/2);
-B = B⁺T[tix][:, abs.(ϕB⁺T[Tix]) .< 1e-2]
+B = B⁺T[Tix + 1][:, abs.(ϕB⁺T[Tix + 1]) .< 1e-2] # Tix + 1 because target set is first
 
 ## Test a Single Call
 x = [-0.8, 2.4];
