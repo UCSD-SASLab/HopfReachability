@@ -173,7 +173,7 @@ end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
 function Hopf_minT(system, target, intH, HJoc, x; 
-                  opt_method = Hopf_cd, preH=preH_std,
+                  opt_method=Hopf_cd, preH=preH_std,
                   T_init=nothing, v_init_=nothing,
                   time_p=(0.02, 0.1, 1.), opt_p=nothing, 
                   dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
@@ -222,7 +222,7 @@ function Hopf_minT(system, target, intH, HJoc, x;
         if Tˢ > maxT; println("!!! Not reachable under max time !!!"); break; end    
 
         ## Update the t, to increase Tˢ
-        t_ext = collect(Tˢ + th : th : Tˢ + Th); push!(t, t_ext...)
+        t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
         Tˢ, Thi = t[end], Thi + 1
 
         ## Extending previous precomputed Hdata for increased final time
@@ -426,7 +426,7 @@ function stretch_BM(Wi, A; tol=0.5e-9, ϵ=1e-3)
 end
 
 ## Proximal update for v
-function update_v(z, ξ, ξ2, tbH, ρ, ρ2; dim=size(tbH[2][1][1])[2], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function update_v(z, ξ, ξ2, tbH, ρ, ρ2; dim_u=size(tbH[2][1][1])[2], dim_d=size(tbH[2][1][2])[2])
 
     Hmats, tix, th = tbH[2]
     Rt, R2t = Hmats[1:2]
@@ -594,7 +594,7 @@ function intH_ytc17(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(sys
 end
 
 ## Hamiltonian Precomputation
-function preH_ytc17(system, target, t; opt_p, admm=false, F_init=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -605,7 +605,7 @@ function preH_ytc17(system, target, t; opt_p, admm=false, F_init=false, dim=size
     Rt, R2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
 
     ## Precomputing ADMM matrix
-    F = isnothing(F_init) ? Jp[1] : inv(F_init) ## THIS ONLY WORKS WHEN c == 0 (admm only), ... unless we move c over todo
+    F = isnothing(F_init) ? Jp[1] : inv(F_init) ## todo only works when c (in J) == 0, need to include c in update_v
 
     for sstep in eachindex(t)
         R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
