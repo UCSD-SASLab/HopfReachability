@@ -13,8 +13,8 @@ C = 0.5 * [1 0; 0 1]
 C2 = 0.5 * [2 0; 0 1]
 Q = 0.1 * 3 * [1 0; 0 1]
 Q2 = 0.2 * 2 * [1 0; 0 1]
-a1 = [0.5 0.75]
-a2 = [0.5 0]
+a1 = zero([0.5 0.75])
+a2 = zero([0.5 0])
 system = (M, C, C2, Q, Q2, a1, a2)
 
 ## Initialize (3D)
@@ -89,22 +89,22 @@ solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
                                                     th,
                                                     grid_p,
                                                     opt_p=opt_p_cd,
-                                                    warm=true,
+                                                    warm=false,
                                                     check_all=true,
                                                     printing=true);
 B⁺T, ϕB⁺T = solution;
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=1e-2, interpolate=false, value_fn=true, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=1e-3, interpolate=true, alpha=0.5)
+plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=1e-2, interpolate=false, alpha=0.1)
+plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
 
 ## Find Boundary Pts of one BRS for Time of Interest
-Toi = 0.4
+Toi = 0.2
 Tix = findfirst(abs.(T .- Toi) .< Th/2);
 B = B⁺T[Tix + 1][:, abs.(ϕB⁺T[Tix + 1]) .< 1e-2] # Tix + 1 because target set is first
 
 ## Test a Single Call
 x = [-0.8, 2.4];
-uˢ, dˢ, Tˢ, ϕ = Hopf_minT(system, target, intH_ytc17, HJoc_ytc17, x; preH=preH_ytc17, time_p=(th, Th, Tf + ϵ))
+uˢ, dˢ, Tˢ, ϕ = Hopf_minT(system, target, intH_ytc17, HJoc_ytc17, x; preH=preH_ytc17, time_p=(th, Th, Tf + ϵ), printing=true)
 
 ## Compute Minimum Time Tˢ until reachable and the Optimal Control uˢ and Disturbance dˢ at that time
 Fu, Fd = zero(B), zero(B)

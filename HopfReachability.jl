@@ -42,8 +42,6 @@ function Hopf_BRS(system, target, intH, T;
     end
 
     ## Initialize
-    # moving_target = typeof(target[3][1]) <: Matrix || typeof(target[3][1]) <: Vector || typeof(target[3][1]) <: Number ? false : true
-    # moving_grid = typeof(Xg) <: Matrix || isnothing(Xg) ? false : true
     simple_problem = !moving_grid && !moving_target
 
     J, Jˢ, Jp = target
@@ -59,9 +57,7 @@ function Hopf_BRS(system, target, intH, T;
         bd, N = grid_p
         lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
         xig = collect(lb : 1/N : ub) .+ ϵ; lg = length(xig)
-        Xg = hcat(collect.(Iterators.product([xig for i in 1:dim]...))...)[end:-1:1,:] ## MULTI-D FIX
-        # Xg = hcat(collect.(Iterators.product(xig .- ϵ, xig .+ ϵ))...)[end:-1:1,:] ## MULTI-D FIX
-        
+        Xg = hcat(collect.(Iterators.product([xig for i in 1:dim]...))...)[end:-1:1,:]
         #takes a while in REPL, but not when timed...
         
     elseif moving_grid
@@ -73,12 +69,11 @@ function Hopf_BRS(system, target, intH, T;
     ## Compute Near-Boundary set of Target in X
     if simple_problem
         
-        ϕX = J(Xg, A, c) ## MULTI-D FIX
-        # ϕX = J(vcat(Xg, zeros(dim-2, lg^2)), A, c) ## MULTI-D FIX
+        ϕX = J(Xg, A, c)
         if check_all
             B⁺, ϕB⁺, index = Xg, ϕX, collect(1:length(ϕX))
         else
-            index = boundary(ϕX; lg, N, dim=dim) ## MULTI-D FIX
+            index = boundary(ϕX; lg, N, dim=dim)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
         end
 
@@ -105,12 +100,11 @@ function Hopf_BRS(system, target, intH, T;
             Ni = moving_grid ? N[Tix] : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            ϕX = J(Xgi, Ai, ci) ## MULTI-D FIX
-            # ϕX = J(vcat(Xgi, zeros(dim-2, size(Xgi)[2])), Ai, ci) ## MULTI-D FIX
+            ϕX = J(Xgi, Ai, ci)
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
-                index = boundary(ϕX; lg=lgi, N=Ni, dim=dim) ## MULTI-D FIX
+                index = boundary(ϕX; lg=lgi, N=Ni, dim=dim)
                 B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
             end
 
@@ -118,13 +112,11 @@ function Hopf_BRS(system, target, intH, T;
         end
 
         if isempty(index)
-            # error("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
             if printing; println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ)); end
         end
 
         ## Map X to Z
-        B⁺z = exp(Ti * M) * B⁺ ## MULTI-D FIX
-        # B⁺z = exp(Ti * M) * vcat(B⁺, zeros(dim-2, size(B⁺)[2])) ## MULTI-D FIX
+        B⁺z = exp(Ti * M) * B⁺
         target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
@@ -138,8 +130,7 @@ function Hopf_BRS(system, target, intH, T;
 
         ## Solve Over Grid (near ∂ID if !check_all)
         for bi in index_pts
-            z = B⁺z[:, bi] ## MULTI-D FIX
-            # z = B⁺z[1:2, bi] ## MULTI-D FIX
+            z = B⁺z[:, bi]
             ϕB⁺[bi], dϕdz, opt_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
             v_init = warm ? copy(dϕdz) : nothing
         end
@@ -171,12 +162,17 @@ function Hopf_BRS(system, target, intH, T;
     return (B⁺T, ϕB⁺T), run_stats
 end
 
-## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
+## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
 function Hopf_minT(system, target, intH, HJoc, x; 
                   opt_method=Hopf_cd, preH=preH_std,
                   T_init=nothing, v_init_=nothing,
-                  time_p=(0.02, 0.1, 1.), opt_p=nothing, 
-                  dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
+                  time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
+                  refine=0.5, refines=2, depth_counter=0,
+                  dim=size(system[1])[2], p2=true, printing=false,
+                  moving_target=false, warm=false)
+
+    if printing && depth_counter == 0; println("\nSolving Optimal Control at x=$x,"); end
+    if depth_counter == 0; @suppress begin; tick(); end; end # timing
 
     if opt_method == Hopf_cd
         opt_p = isnothing(opt_p) ? (0.01, 5, 0.5e-7, 500, 20, 20) : opt_p
@@ -187,7 +183,8 @@ function Hopf_minT(system, target, intH, HJoc, x;
     end
 
     J, Jˢ, Jp = target
-    th, Th, maxT = time_p
+    th, Th, maxT = time_p; 
+    uˢ, dˢ, Tˢ, ϕ, dϕdz = 0, 0, 0, 0, 0
     t = isnothing(T_init) ? collect(th: th: Th) : collect(th: th: T_init)
 
     ## Initialize ϕs
@@ -199,8 +196,8 @@ function Hopf_minT(system, target, intH, HJoc, x;
 
     ## Loop Over Time Frames until ϕ(z, T) > 0
     Thi = 0; Tˢ = t[end]
-    while ϕ > 0
-        if printing; println("   checking T =-", Tˢ, "..."); end
+    while ϕ > tol
+        if printing; println("   checking T = $Tˢ..."); end
         tix = length(t)
         Tix = Thi + 1
 
@@ -218,14 +215,29 @@ function Hopf_minT(system, target, intH, HJoc, x;
         v_init = warm ? copy(dϕdz) : nothing
 
         ## Check if Tˢ yields valid ϕ
-        if ϕ <= 0; break; end    
-        if Tˢ > maxT; println("!!! Not reachable under max time !!!"); break; end    
+        if ϕ <= 0;
+            if refines > 0
+                if printing; println("At $Tˢ, ϕ<0 with (th,Th)=($th,$Th), but refining with ($(th*refine),$(Th*refine)),"); end
+                
+                uˢ, dˢ, Tˢ, ϕ, dϕdz = Hopf_minT(system, target, intH, HJoc, x; preH,
+                                    time_p=(th*refine, Th*refine, Tˢ+Th), # refine t params
+                                    T_init = Thi == 0 ? T_init : (Tˢ-Th), # initialize 1 Th step back unless first step
+                                    refines=refines-1, depth_counter=depth_counter+1,
+                                    v_init_ = warm ? copy(dϕdz) : nothing,
+                                    refine, printing, opt_method, opt_p, tol, p2, moving_target, warm);
+
+            elseif printing; 
+                println("Tˢ ∈ [$(Tˢ-Th), $Tˢ], overestimating with Tˢ=$Tˢ"); 
+            end
+            break; 
+        end    
+        if Tˢ > maxT; println("!!! Not reachable under max time of $Tˢ !!!"); break; end    
 
         ## Update the t, to increase Tˢ
         t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
         Tˢ, Thi = t[end], Thi + 1
 
-        ## Extending previous precomputed Hdata for increased final time
+        ## Parsimoniously amending Hdata for increased final time
         F_init = admm ? Hmats[end] : nothing
         Hmats_ext = preH(system, target, t_ext; opt_p, admm, F_init)
         Rt_ext, R2t_ext = Hmats_ext[1], Hmats_ext[2]
@@ -235,9 +247,97 @@ function Hopf_minT(system, target, intH, HJoc, x;
     end
 
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
+    if depth_counter == 0
+        uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
+
+        totaltime = tok()
+        if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
+        if printing; println("TOTAL TIME: $totaltime s \n"); end
+    end
+
+    return uˢ, dˢ, Tˢ, ϕ, dϕdz
+end
+
+## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
+function Hopf_minT_BM(system, target, intH, HJoc, x; 
+        opt_method = Hopf_cd, preH=preH_std,
+        T_init=nothing, v_init_=nothing,
+        time_p=(0.02, 0.1, 1.), opt_p=nothing, 
+        dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
+
+    if printing; println("\nSolving Optimal Control at x=$x,"); end
+    @suppress begin; tick(); end # timing
+
+    if opt_method == Hopf_cd
+        opt_p = isnothing(opt_p) ? (0.01, 5, 0.5e-7, 500, 20, 20) : opt_p
+        admm = false
+    elseif opt_method == Hopf_admm
+        opt_p = isnothing(opt_p) ? (1e-4, 1e-4, 1e-5, 100) : opt_p 
+        admm = true
+    end
+
+    J, Jˢ, Jp = target
+    th, Th, maxT = time_p
+    t = isnothing(T_init) ? collect(th: th: maxT) : collect(th: th: T_init) # Bisection
+
+    ## Initialize ϕs
+    ϕ, dϕdz = Inf, 0
+    v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
+
+    ## Precomputing some of H for efficiency
+    Hmats = preH(system, target, t; opt_p, admm)
+
+    ## Loop over Time Frames until ϕ(z, T) > 0
+    c = 0; break_flag = false;
+    Tl, Tu = t[1], t[end]; 
+    Tˢ, tix = copy(Tu), length(t)
+
+    while true
+        if printing && !break_flag; println("   checking T = $Tˢ ∈ [$Tl, $Tu] ..."); end
+        Tix = findfirst(abs.(t .-  Tˢ) .< Th); #useless unless moving target
+
+        ## Support Moving Targets
+        Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
+        target = (J, Jˢ, (Ai, ci))
+
+        ## Packaging Hdata, tbH
+        Hdata = (Hmats, tix, th)
+        tbH = (intH, Hdata)
+
+        ## Hopf-Solving to check current Tˢ
+        z = exp(Tˢ * system[1]) * x
+        ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
+        v_init = warm ? copy(dϕdz) : nothing
+
+        ## Check if Tˢ yields valid ϕ
+        if c == 0; 
+            if ϕ > 0; println("!!! Not reachable under max time of $maxT seconds !!!"); break; end
+            tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix];
+        elseif Tu - Tl ≈ th
+            if break_flag; if printing; println("Tˢ ∈ [$Tl, $Tu], overestimating with Tˢ=$Tu"); end; break; end
+            tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix]; break_flag = true # finish on over-estimate
+            # could also defeine th and refine at this point
+        elseif ϕ > 0
+            Tl = copy(Tˢ); tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix]
+        else # ϕ ≤ 0
+            Tu = copy(Tˢ); tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix]
+        end    
+
+        c += 1
+        if c > -log(th/maxT)/log(2) + 2 + ceil(abs(log(th)/log(10))); 
+            println(Tu - Tl, " vs ", th); 
+            println("Tu - Tl ≈ th is ", Tu - Tl ≈ th); println("Tu - Tl ≤ th*1.5 is ", Tu - Tl ≤ th*1.5)
+            error("Bisection should've converged :/"); end
+    end
+
+    ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
     uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
 
-    return uˢ, dˢ, Tˢ, ϕ
+    totaltime = tok()
+    if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
+    if printing; println("TOTAL TIME: $totaltime s \n"); end
+
+    return uˢ, dˢ, Tˢ, ϕ, dϕdz
 end
 
 

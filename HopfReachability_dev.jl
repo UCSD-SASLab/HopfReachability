@@ -1,5 +1,6 @@
 module HopfReachability_dev
 
+using DebuggingUtilities
 using LinearAlgebra, StatsBase, ScatteredInterpolation
 using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS
 plotlyjs()
@@ -30,8 +31,9 @@ function Hopf_BRS(system, target, intH, T;
                   grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, 
                   p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false)
-
+    
     if printing; println("\nSolving Backwards Reachable Set,"); end
+    @suppress begin; tick(); end # timing
 
     if opt_method == Hopf_cd
         opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20) : opt_p
@@ -48,7 +50,7 @@ function Hopf_BRS(system, target, intH, T;
 
     J, Jˢ, Jp = target
     M, A, c = system[1], Jp[1], Jp[2]
-    t = collect(th: th: T[end])
+    t = round.(collect(th: th: T[end]), digits=Int(ceil(-log(th)/log(10))))
 
     ## Initialize Data
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T, v_init = [], [], [], [], [], [], nothing
@@ -87,8 +89,6 @@ function Hopf_BRS(system, target, intH, T;
 
     ## Precomputation
     Hmats = preH(system, target, t; opt_p, admm)
-
-    @suppress begin; tick(); end # timing
 
     ## Loop Over Time Frames
     for Tix in eachindex(T)
@@ -161,9 +161,9 @@ function Hopf_BRS(system, target, intH, T;
     totaltime = tok()
 
     if plotting; plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, zplot); end
-    if printing; println("TOTAL TIME: ", totaltime); end
-    if printing; println("MEAN TIME[s] PER TIME POINT: ", averagetimes); end
-    if printing; println("TOTAL POINTS PER TIME POINT: ", pointstocheck); end
+    if printing; println("TOTAL TIME: $totaltime s"); end
+    if printing; println("MEAN TIME[s] PER TIME POINT: $averagetimes"); end
+    if printing; println("TOTAL POINTS PER TIME POINT: $pointstocheck"); end
     run_stats = (totaltime, averagetimes, pointstocheck)
 
     ## Return arrays of B⁺ over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
@@ -173,10 +173,15 @@ end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
 function Hopf_minT(system, target, intH, HJoc, x; 
-                  opt_method = Hopf_cd, preH=preH_std,
+                  opt_method=Hopf_cd, preH=preH_std,
                   T_init=nothing, v_init_=nothing,
-                  time_p=(0.02, 0.1, 1.), opt_p=nothing, 
-                  dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
+                  time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
+                  refinement=0.5, refine_depth=2, depth_counter=0,
+                  dim=size(system[1])[2], p2=true, printing=false,
+                  moving_target=false, warm=false)
+
+    if printing && depth_counter == 0; println("\nSolving First Reachable Optimal Control,"); end
+    @suppress begin; tick(); end # timing
 
     if opt_method == Hopf_cd
         opt_p = isnothing(opt_p) ? (0.01, 5, 0.5e-7, 500, 20, 20) : opt_p
@@ -199,8 +204,9 @@ function Hopf_minT(system, target, intH, HJoc, x;
 
     ## Loop Over Time Frames until ϕ(z, T) > 0
     Thi = 0; Tˢ = t[end]
-    while ϕ > 0
-        if printing; println("   checking T =-", Tˢ, "..."); end
+    while ϕ > tol
+
+        if printing; println("   checking T =-$Tˢ..."); end
         tix = length(t)
         Tix = Thi + 1
 
@@ -218,14 +224,24 @@ function Hopf_minT(system, target, intH, HJoc, x;
         v_init = warm ? copy(dϕdz) : nothing
 
         ## Check if Tˢ yields valid ϕ
-        if ϕ <= 0; break; end    
-        if Tˢ > maxT; println("!!! Not reachable under max time !!!"); break; end    
+        if ϕ <= 0;
+            if refine_depth > 0
+                if printing; println("\n Hit ϕ<0 at $Tˢ with (th,Th)=($th,$Th) and refining with (th,Th)=($(th*refinement),$(Th*refinement)),"); end
+                uˢ, dˢ, Tˢ, ϕ, dϕdz = Hopf_minT(system, target, intH, HJoc, x; 
+                                    time_p=(th*refinement, Th*refinement, Tˢ+Th), T_init = Tˢ-Th, 
+                                    refine_depth=refine_depth-1, depth_counter=depth_counter+1, refinement,
+                                    v_init_ = warm ? copy(dϕdz) : nothing,
+                                    printing, opt_method, preH, opt_p, tol, p2, moving_target, warm); end
+
+            break; 
+        end    
+        if Tˢ > maxT; println("!!! Not reachable under max time of -$Tˢ !!!"); break; end    
 
         ## Update the t, to increase Tˢ
-        t_ext = collect(Tˢ + th : th : Tˢ + Th); push!(t, t_ext...)
+        t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
         Tˢ, Thi = t[end], Thi + 1
 
-        ## Extending previous precomputed Hdata for increased final time
+        ## Efficiently extending previous precomputed Hdata for increased final time
         F_init = admm ? Hmats[end] : nothing
         Hmats_ext = preH(system, target, t_ext; opt_p, admm, F_init)
         Rt_ext, R2t_ext = Hmats_ext[1], Hmats_ext[2]
@@ -234,10 +250,108 @@ function Hopf_minT(system, target, intH, HJoc, x;
 
     end
 
+    # if depth_counter == 0
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
     uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
 
-    return ϕ, uˢ, dˢ, Tˢ
+    totaltime = tok()
+    if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
+    if printing; println("TOTAL TIME: $totaltime s \n"); end
+    # end
+
+    return uˢ, dˢ, Tˢ, ϕ, dϕdz
+end
+
+## Fast Bisection version of minT, only works for BRT's
+function Hopf_minT_BM(system, target, intH, HJoc, x; 
+                  opt_method=Hopf_cd, preH=preH_std,
+                  T_init=nothing, v_init_=nothing,
+                  time_p=(0.02, 0.1, 1.), opt_p=nothing, 
+                  dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
+
+    if printing; println("\nSolving First Reachable Optimal Control,"); end
+    @suppress begin; tick(); end # timing
+
+    if opt_method == Hopf_cd
+        opt_p = isnothing(opt_p) ? (0.01, 5, 0.5e-7, 500, 20, 20) : opt_p
+        admm = false
+    elseif opt_method == Hopf_admm
+        opt_p = isnothing(opt_p) ? (1e-4, 1e-4, 1e-5, 100) : opt_p 
+        admm = true
+    end
+
+    J, Jˢ, Jp = target
+    th, Th, maxT = time_p
+    # t = isnothing(T_init) ? collect(th: th: Th) : collect(th: th: T_init)
+    t = isnothing(T_init) ? collect(th: th: maxT) : collect(th: th: T_init) # Bisection
+    t = round.(t, digits=Int(ceil(-log(th)/log(10)))) # fp precision smh
+
+    ## Initialize ϕs
+    ϕ, dϕdz = Inf, 0
+    v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
+
+    ## Precomputing some of H for efficiency
+    Hmats = preH(system, target, t; opt_p, admm)
+
+    ## Loop over Time Frames until ϕ(z, T) > 0
+    Ti = 0; break_flag = false;
+    Tl, Tu = t[1], t[end]; 
+    Tˢ, tix = copy(Tu), length(t)
+
+    while true
+
+        if printing && !break_flag; println("   checking T = -$Tˢ ∈ [-$Tl, -$Tu] ..."); end
+        # tix = length(t)
+        # Tix = Thi + 1
+        # Ti = T[Tix]
+        Tix = findfirst(abs.(t .-  Tˢ) .< Th); #useless unless moving target
+
+        ## Support Moving Targets
+        Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
+        target = (J, Jˢ, (Ai, ci))
+
+        ## Packaging Hdata, tbH
+        Hdata = (Hmats, tix, th)
+        tbH = (intH, Hdata)
+
+        ## Hopf-Solving to check current Tˢ
+        z = exp(Tˢ * system[1]) * x
+        ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
+        v_init = warm ? copy(dϕdz) : nothing
+
+        ## Check if Tˢ yields valid ϕ
+        if Tˢ == maxT; 
+            if ϕ > 0; println("!!! Not reachable under max time of -$maxT seconds !!!"); break; end
+            @showln tix = argmin(abs.(t .- (Tl + Tu)/2)); 
+            @showln Tˢ = t[tix]
+        elseif Tu - Tl ≈ th
+            if break_flag; if printing; println("Tˢ ∈ [-$Tl, -$Tu], overestimating with Tˢ=-$Tu"); end; break; end
+            tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix] # finish on over-estimate
+            break_flag = true; 
+            # could also defeine th and refine at this point
+        elseif ϕ > 0
+            Tl = copy(Tˢ)
+            tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix]
+        else # ϕ ≤ 0
+            Tu = copy(Tˢ)
+            tix = argmin(abs.(t .- (Tl + Tu)/2)); Tˢ = t[tix]
+        end    
+
+        Ti += 1
+        if Ti > -log(th/maxT)/log(2) + 2 + ceil(abs(log(th)/log(10))); 
+            println(Tu - Tl, " vs ", th); 
+            println("Tu - Tl ≈ th is ", Tu - Tl ≈ th); println("Tu - Tl ≤ th*1.5 is ", Tu - Tl ≤ th*1.5)
+            error("Bisection should've converged :/"); end
+    end
+
+    ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
+    uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
+
+    totaltime = tok()
+    if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
+    if printing; println("TOTAL TIME: $totaltime s \n"); end
+    
+    return uˢ, dˢ, Tˢ, ϕ, dϕdz
 end
 
 
