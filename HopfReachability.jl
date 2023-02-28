@@ -14,19 +14,18 @@ plotlyjs()
 
 
 ## Evaluate Hopf Cost
-function Hopf(system, target, tbH, z, v; p2, dim=size(system[1])[1])
+function Hopf(system, target, tbH, z, v; p2, nx=size(system[1])[1])
 
     J, Jˢ, Jp = target
     intH, Hdata = tbH
 
-    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2); ### MULTI-D FIX
-    # return Jˢ(v, Jp...) - z'view(v,1:2) + intH(system, Hdata, v; p2); ### MULTI-D FIX
+    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2);
 end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
-function Hopf_BRS(system, target, intH, T;
-                  opt_method = Hopf_cd,
-                  preH=preH_std, Xg=nothing, ϵ=0.5e-7, dim=size(system[1])[1], 
+function Hopf_BRS(system, target, T;
+                  opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
+                  Xg=nothing, ϵ=0.5e-7, nx=size(system[1])[1], 
                   grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, 
                   p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false)
@@ -57,7 +56,7 @@ function Hopf_BRS(system, target, intH, T;
         bd, N = grid_p
         lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
         xig = collect(lb : 1/N : ub) .+ ϵ; lg = length(xig)
-        Xg = hcat(collect.(Iterators.product([xig for i in 1:dim]...))...)[end:-1:1,:]
+        Xg = hcat(collect.(Iterators.product([xig for i in 1:nx]...))...)[end:-1:1,:]
         #takes a while in REPL, but not when timed...
         
     elseif moving_grid
@@ -73,7 +72,7 @@ function Hopf_BRS(system, target, intH, T;
         if check_all
             B⁺, ϕB⁺, index = Xg, ϕX, collect(1:length(ϕX))
         else
-            index = boundary(ϕX; lg, N, dim=dim)
+            index = boundary(ϕX; lg, N, nx=nx)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
         end
 
@@ -104,7 +103,7 @@ function Hopf_BRS(system, target, intH, T;
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
-                index = boundary(ϕX; lg=lgi, N=Ni, dim=dim)
+                index = boundary(ϕX; lg=lgi, N=Ni, nx=nx)
                 B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
             end
 
@@ -144,7 +143,7 @@ function Hopf_BRS(system, target, intH, T;
         ## Update Near-Boundary index to intermediate solution
         if simple_problem && Tix != length(T) && !check_all
             ϕX[index] = ϕB⁺
-            index = boundary(ϕX; lg, N, dim=dim)
+            index = boundary(ϕX; lg, N, nx=nx)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index]
         end
     end
@@ -163,12 +162,12 @@ function Hopf_BRS(system, target, intH, T;
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
-function Hopf_minT(system, target, intH, HJoc, x; 
-                  opt_method=Hopf_cd, preH=preH_std,
+function Hopf_minT(system, target, x; 
+                  opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
                   T_init=nothing, v_init_=nothing,
                   time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
                   refine=0.5, refines=2, depth_counter=0,
-                  dim=size(system[1])[2], p2=true, printing=false,
+                  nx=size(system[1])[2], p2=true, printing=false,
                   moving_target=false, warm=false)
 
     if printing && depth_counter == 0; println("\nSolving Optimal Control at x=$x,"); end
@@ -219,12 +218,12 @@ function Hopf_minT(system, target, intH, HJoc, x;
             if refines > 0
                 if printing; println("At $Tˢ, ϕ<0 with (th,Th)=($th,$Th), but refining with ($(th*refine),$(Th*refine)),"); end
                 
-                uˢ, dˢ, Tˢ, ϕ, dϕdz = Hopf_minT(system, target, intH, HJoc, x; preH,
+                uˢ, dˢ, Tˢ, ϕ, dϕdz = Hopf_minT(system, target, x; 
                                     time_p=(th*refine, Th*refine, Tˢ+Th), # refine t params
                                     T_init = Thi == 0 ? T_init : (Tˢ-Th), # initialize 1 Th step back unless first step
                                     refines=refines-1, depth_counter=depth_counter+1,
                                     v_init_ = warm ? copy(dϕdz) : nothing,
-                                    refine, printing, opt_method, opt_p, tol, p2, moving_target, warm);
+                                    refine, printing, opt_method, opt_p, preH, intH, HJoc, tol, p2, moving_target, warm);
 
             elseif printing; 
                 println("Tˢ ∈ [$(Tˢ-Th), $Tˢ], overestimating with Tˢ=$Tˢ"); 
@@ -259,11 +258,11 @@ function Hopf_minT(system, target, intH, HJoc, x;
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, for given system & target
-function Hopf_minT_BM(system, target, intH, HJoc, x; 
-        opt_method = Hopf_cd, preH=preH_std,
+function Hopf_minT_BM(system, target, x; 
+    opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
         T_init=nothing, v_init_=nothing,
         time_p=(0.02, 0.1, 1.), opt_p=nothing, 
-        dim=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
+        nx=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
 
     if printing; println("\nSolving Optimal Control at x=$x,"); end
     @suppress begin; tick(); end # timing
@@ -351,19 +350,19 @@ end
 
 
 ## Iterative Coordinate Descent of the Hopf Cost at Point z
-function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(system[1])[1], max_its=100)
+function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(system[1])[1], max_its=100)
 
     vh, L, tol, lim, lll, max_runs = opt_p
     solution, v = 1e9, nothing
-    v_arr = zeros(dim, max_its)
+    v_arr = zeros(nx, max_its)
 
     converged_runs, runs = 0, 0
     while converged_runs < lll
 
-        v = isnothing(v_init) ? 10*(rand(dim) .- 0.5) : copy(v_init) # Hopf optimizer variable
-        v_arr_temp = zeros(dim, max_its)
+        v = isnothing(v_init) ? 10*(rand(nx) .- 0.5) : copy(v_init) # Hopf optimizer variable
+        v_arr_temp = zeros(nx, max_its)
 
-        kcoord = copy(dim); # coordinate counter
+        kcoord = copy(nx); # coordinate counter
         stopcount = 0; # convergence flag
         happycount = 0; # step-size flag
 
@@ -376,7 +375,7 @@ function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(sys
             if ci < max_its + 1; v_arr_temp[:, ci] = copy(v); end
 
             ## Nearby Point along Coordinate
-            kcoord = mod(kcoord, dim) + 1; #iterate coords
+            kcoord = mod(kcoord, nx) + 1; #iterate coords
             v_coord = copy(v);
 
             v_coord[kcoord] = v_coord[kcoord] + vh; # nearby pt
@@ -394,7 +393,7 @@ function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(sys
             stopcount = abs(fnownow - fnow) < tol ? stopcount + 1 : 0; # in thresh for coordinate
             happycount, L = happycount > lim ? (1, 2L) : (happycount + 1, L); 
 
-            if stopcount == dim || ci == max_its # in thresh for all coordinates
+            if stopcount == nx || ci == max_its # in thresh for all coordinates
                 if -1e9 < fnow && fnow < 1e9
                     solution = min(solution, fnow) # min with iter, to overcome potential local convergence
                     v_arr = solution == fnow ? v_arr_temp[:, 1:ci] : v_arr # save minimum descent
@@ -424,7 +423,7 @@ function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(sys
 end
 
 ## Proximal Splitting Algorithm for optimizing the Hopf Cost at point z (vectorized)
-function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     ## Initialize
     M, B, C, Q, Q2, a, a2 = system
@@ -433,12 +432,12 @@ function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(s
     Rt, R2t = tbH[2][1][1:2]
 
     ## Costate, Artificial Constraint Curves, Augmented Lagrange Multipliers
-    v = isnothing(v_init) ? 0*ones(dim) : v_init
-    γ, γ2, λ, λ2  = 0*ones(dim_u, tix), 0*ones(dim_d, tix), 0*ones(dim_u, tix), 0*ones(dim_d, tix) 
-    v_arr = zeros(dim, max_its)
+    v = isnothing(v_init) ? 0*ones(nx) : v_init
+    γ, γ2, λ, λ2  = 0*ones(nu, tix), 0*ones(nd, tix), 0*ones(nu, tix), 0*ones(nd, tix) 
+    v_arr = zeros(nx, max_its)
 
     ## Update Quadrature Mats
-    Rvt, R2vt = reshape(view(Rt,1:dim_u*tix,:) * v, dim_u, tix), reshape(view(R2t,1:dim_d*tix,:) * v, dim_d, tix)
+    Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
 
     ci = 1
     while true
@@ -463,7 +462,7 @@ function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, dim=size(s
         ci += 1
 
         ## Update Quadrature Mats
-        Rvt, R2vt = reshape(view(Rt,1:dim_u*tix,:) * v, dim_u, tix), reshape(view(R2t,1:dim_d*tix,:) * v, dim_d, tix)
+        Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
     end
 
     return -Hopf(system, target, tbH, z, v; p2), v, v_arr
@@ -526,7 +525,7 @@ function stretch_BM(Wi, A; tol=0.5e-9, ϵ=1e-3)
 end
 
 ## Proximal update for v
-function update_v(z, ξ, ξ2, tbH, ρ, ρ2; dim_u=size(tbH[2][1][1])[2], dim_d=size(tbH[2][1][2])[2])
+function update_v(z, ξ, ξ2, tbH, ρ, ρ2; nu=size(tbH[2][1][1])[2], nd=size(tbH[2][1][2])[2])
 
     Hmats, tix, th = tbH[2]
     Rt, R2t = Hmats[1:2]
@@ -534,7 +533,7 @@ function update_v(z, ξ, ξ2, tbH, ρ, ρ2; dim_u=size(tbH[2][1][1])[2], dim_d=s
 
     y = z
     for s = 1:tix
-        y += th * ((ρ * view(Rt, dim_u*(s-1)+1: dim_u*s,:)' * view(ξ,:,s) + (ρ2 * view(R2t, dim_d*(s-1)+1: dim_d*s,:)' * view(ξ2,:,s))))
+        y += th * ((ρ * view(Rt, nu*(s-1)+1: nu*s,:)' * view(ξ,:,s) + (ρ2 * view(R2t, nd*(s-1)+1: nd*s,:)' * view(ξ2,:,s))))
     end
 
     return F * y # need to subtract c from RHS/y todo
@@ -550,11 +549,11 @@ end
 ##################################################################################################
 
 ## Find points near boundary ∂ of f(z) = 0
-function boundary(ϕ; lg, N, δ = 20/N, dim=size(system[1])[1]) ## MULTI-D FIX
+function boundary(ϕ; lg, N, δ = 20/N, nx=size(system[1])[1]) ## MULTI-D FIX
 
-    A = Float64.(abs.(reshape(ϕ, [lg for i=1:dim]...)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
+    A = Float64.(abs.(reshape(ϕ, [lg for i=1:nx]...)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     # A = Float64.(abs.(reshape(ϕ, lg, lg)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
-    B = 1/(N/2)^2 * ones([Int(floor(N/2)) for i=1:dim]...); # kernel
+    B = 1/(N/2)^2 * ones([Int(floor(N/2)) for i=1:nx]...); # kernel
     # B = 1/(N/2)^2 * ones(Int(floor(N/2)),Int(floor(N/2))); # kernel
 
     ind = imfilter(A, centered(B), Fill(0)); # cushion boundary w conv
@@ -563,9 +562,9 @@ function boundary(ϕ; lg, N, δ = 20/N, dim=size(system[1])[1]) ## MULTI-D FIX
 end
 
 ## Plots BRS over T in X and Z space
-function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue], alpha=0.5, title=nothing, value_fn=false, dim=size(B⁺T[1])[1])
+function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue], alpha=0.5, title=nothing, value_fn=false, nx=size(B⁺T[1])[1])
 
-    if dim > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
+    if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
     Xplot = isnothing(title) ? Plots.plot(title="BRS: Φ(X, T) = 0") : Plots.plot(title=title)
     if zplot; Zplot = Plots.plot(title="BRS: Φ(Z, T) = 0"); end
@@ -591,7 +590,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e
         end
     end
 
-    if dim > 2 && interpolate; plotly_pl = zplot ? [Array{GenericTrace{Dict{Symbol, Any}},1}(), Array{GenericTrace{Dict{Symbol, Any}},1}()] : [Array{GenericTrace{Dict{Symbol, Any}},1}()]; end
+    if nx > 2 && interpolate; plotly_pl = zplot ? [Array{GenericTrace{Dict{Symbol, Any}},1}(), Array{GenericTrace{Dict{Symbol, Any}},1}()] : [Array{GenericTrace{Dict{Symbol, Any}},1}()]; end
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
         B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
@@ -609,7 +608,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e
                 ## Find Boundary in Near-Boundary
                 b = b⁺[:, abs.(ϕ) .< ϵs]
 
-                scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:dim]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
+                scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:nx]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 # scatter!(plots[Int(bi > 2) + 1], b[1,:], b[2,:], label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 
                 if value_fn
@@ -620,13 +619,13 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e
             ## Plot Interpolation
             else 
 
-                if dim == 2
-                    contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:dim]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label)
+                if nx == 2
+                    contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:nx]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label)
 
                     if value_fn
 
                         ## Make Grid
-                        xig = [collect(minimum(b⁺[i,:]) : cres : maximum(b⁺[i,:])) for i=1:dim]
+                        xig = [collect(minimum(b⁺[i,:]) : cres : maximum(b⁺[i,:])) for i=1:nx]
                         G = hcat(collect.(Iterators.product(xig...))...)'
                         
                         ## Construct Interpolationb (Should skip this in the future and just use Plotly's built in one for contour)
@@ -653,7 +652,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem=true, ϵs = 0.1, ϵc = 1e
         if zplot; Zplot = Plots.plot(vfn_plots[2], Zplot); end
     end
 
-    if dim > 2 && interpolate 
+    if nx > 2 && interpolate 
         Xplot = PlotlyJS.plot(plotly_pl[1], Layout(title="BRS of T, in X"));
         if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Layout(title="BRS of T, in X")); end
     end
@@ -677,14 +676,14 @@ end
 ### Example 1 
 
 ## Time integral of Hamiltonian for YTC et al. 2017, quadratic control constraints
-function intH_ytc17(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function intH_ytc17(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2, a, a2 = system
     Hmats, tix, th = Hdata
     Rt, R2t, G, G2 = Hmats
 
     ## Quadrature mats
-    Rvt, R2vt = reshape(view(Rt,1:dim_u*tix,:) * v, dim_u, tix), reshape(view(R2t,1:dim_d*tix,:) * v, dim_d, tix)
+    Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
     
     ## Quadrature sum
     H1 = th * (sum(map(norm, eachcol(G * Rvt))) + sum(a * Rvt)) # player 1 / control
@@ -694,7 +693,7 @@ function intH_ytc17(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(sys
 end
 
 ## Hamiltonian Precomputation
-function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -702,7 +701,7 @@ function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, dim=si
     ρ, ρ2 = opt_p[1:2]
 
     ## Transformation Mats R := (exp(-(T-t)M)C)' over t
-    Rt, R2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
+    Rt, R2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
 
     ## Precomputing ADMM matrix
     F = isnothing(F_init) ? Jp[1] : inv(F_init) ## todo only works when c (in J) == 0, need to include c in update_v
@@ -710,8 +709,8 @@ function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, dim=si
     for sstep in eachindex(t)
         R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
-        Rt[ dim_u*(sstep-1) + 1 : dim_u*sstep, :] = R;
-        R2t[dim_d*(sstep-1) + 1 : dim_d*sstep, :] = R2;
+        Rt[ nu*(sstep-1) + 1 : nu*sstep, :] = R;
+        R2t[nd*(sstep-1) + 1 : nd*sstep, :] = R2;
     end
 
     ## Precomputing SVD for matrix sqrt
@@ -727,7 +726,7 @@ function preH_ytc17(system, target, t; opt_p, admm=false, F_init=nothing, dim=si
 end
 
 ## Optimal HJB Control
-function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2, a, a2 = system
     R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
@@ -737,7 +736,7 @@ function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, dim=size(system[1]
     G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
 
     uˢ = inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' 
-    dˢ = p2 ? - (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(dim_d)
+    dˢ = p2 ? - (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(nd)
 
     return uˢ, dˢ
 end
@@ -747,13 +746,13 @@ end
 ### Example 2
 
 ## Time integral of Hamiltonian for MRK et al. 2018, inf-norm control constraints
-function intH_mrk18(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function intH_mrk18(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     QRt, QR2t, tix, th = Hdata
 
     ## Quadrature mats
-    QRvt, QR2vt = reshape(view(QRt,1:dim_u*tix,:) * v, dim_u, t), reshape(view(QR2t,1:dim_d*tix,:) * v, dim_d, t)
+    QRvt, QR2vt = reshape(view(QRt,1:nu*tix,:) * v, nu, t), reshape(view(QR2t,1:nd*tix,:) * v, nd, t)
     
     ## Quadrature sum
     H1 = th * sum(map(c->sum(abs,c), eachcol(QRvt))) # player 1 / control
@@ -763,7 +762,7 @@ function intH_mrk18(system, Hdata, v; p2, dim=size(system[1])[1], dim_u=size(sys
 end
 
 ## Hamiltonian Precomputation
-function preH_mrk18(system, target, t; opt_p, admm=false, F_init=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_mrk18(system, target, t; opt_p, admm=false, F_init=false, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -774,11 +773,11 @@ function preH_mrk18(system, target, t; opt_p, admm=false, F_init=false, dim=size
     F = isnothing(F_init) ? Jp[1] : inv(F_init) ## THIS ONLY WORKS WHEN c == 0 (admm only), ... unless we move c over todo
 
     ## Transformation Mats Q * R := Q * (exp(-(T-t)M)C)' over t
-    QRt, QR2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
+    QRt, QR2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
     for sstep in eachindex(t)
         R, R2 = - (exp(t[sstep] * M) * C)', - (exp(t[sstep] * M) * C2)';
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
-        QRt[dim_u*(sstep-1) + 1 : dim_u*sstep, :], QR2t[dim_d*(sstep-1) + 1 : dim_d*sstep, :] = Q * R, Q2 * R2
+        QRt[nu*(sstep-1) + 1 : nu*sstep, :], QR2t[nd*(sstep-1) + 1 : nd*sstep, :] = Q * R, Q2 * R2
     end
 
     F = admm ? inv(F) : F
@@ -787,14 +786,14 @@ function preH_mrk18(system, target, t; opt_p, admm=false, F_init=false, dim=size
 end
 
 ## Optimal HJB Control # todo: check graphically
-function HJoc_mrk18(system, dϕdz, T; Hdata=nothing, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function HJoc_mrk18(system, dϕdz, T; Hdata=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
     QR, QR2 = Q * R, Q * R2
 
     uˢ = inv(R') * QR * sign.(QR * dϕdz)
-    dˢ = p2 ? - inv(R2') * QR2 * sign.(QR2 * dϕdz) : zeros(dim_d)
+    dˢ = p2 ? - inv(R2') * QR2 * sign.(QR2 * dϕdz) : zeros(nd)
 
     return uˢ, dˢ
 end
@@ -802,7 +801,7 @@ end
 
 ### Standard Hamiltonian precomputation fn
 
-function preH_std(system, target, t; opt_p, admm=false, dim=size(system[1])[1], dim_u=size(system[2])[2], dim_d=size(system[3])[2])
+function preH_std(system, target, t; opt_p, admm=false, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
 
     M, C, C2, Q, Q2 = system
     J, Jˢ, Jp = target
@@ -813,12 +812,12 @@ function preH_std(system, target, t; opt_p, admm=false, dim=size(system[1])[1], 
     F = Jp[1]
 
     ## Transformation Mats R := (exp(-(T-t)M)C)' over t
-    Rt, R2t = zeros(dim_u*length(t), dim), zeros(dim_d*length(t), dim);
+    Rt, R2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
     for sstep in eachindex(t)
         R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
-        Rt[ dim_u*(sstep-1) + 1 : dim_u*sstep, :] = R;
-        R2t[dim_d*(sstep-1) + 1 : dim_d*sstep, :] = R2;
+        Rt[ nu*(sstep-1) + 1 : nu*sstep, :] = R;
+        R2t[nd*(sstep-1) + 1 : nd*sstep, :] = R2;
     end
 
     F = admm ? inv(F) : F
