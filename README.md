@@ -7,23 +7,32 @@ Currently, this method has been validated for problems with,
 
 Beware, if the Hamiltonian is nonconvex, which occurs when the disturbances exceed the control authority, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. In these settings, we reinitialize the optimization multiple times and in practice, we find that proximal methods converge to the global optimum within one or two guesses. Note, an erroneous value does not affect the solution at any other point (unless warm-starting).
 
-Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless & Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
+Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless, Yat Tin Chow, Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
 
 ## Current Problem Formulation
 
 Given a linear, time-varying system,
 ```math
-\dot{x} = M(t)x + C_1(t) u + C_2(t) d
+\dot{x} = Ax + B_1(t) u + B_2(t) d
 ```
-where control and disturbance are constrained to time-varying sets (we default to ellipses, but inf-norm, 2-norm and 1-norm bounds are all allowable with user-defined functions),
+where control and disturbance are constrained to convex sets (ellipses and boxes predefined, but any convex constraint allowed), e.g. 
 ```math
-u \in \{(u-a_u (t))^T Q^{-1}_u (t) (u-a_u (t)) \leq 1\} \quad \& \quad d \in \{(d-a_d (t))^T Q^{-1}_d (t) (d-a_d (t)) \leq 1 \}
+u \in \big\{ u \in \mathbb{R}^{n_u} \:\: | \:\: (u-c_u (t))^T Q^{-1}_u (t) (u-c_u (t)) \leq 1 \big\} \quad \& \quad d \in \big\{d \in \mathbb{R}^{n_d} \:\: | \:\: (d-c_d (t))^T Q^{-1}_d (t) (d-c_d (t)) \leq 1 \big\}
 ```
-we will compute the (Backwards default) Reachable Set for time T for which all points can be driven to the target with the optimal control despite the worst disturbance.
+we will compute the Backwards Reachable Set for time T for which all points can be driven to the target with the optimal control despite the worst disturbance.
 
-The target set is defined by an ellipsoidal function J for which,
+The target set is defined by an initial Value function $J(x)$ for a convex target set $\mathcal{T}$ (ellipses and boxes predefined) such that,
 ```math
-J(x) \leq 0 \iff x \in Target \quad \& \quad J(x) = 0 \iff x \in \partial Target \quad \& \quad J(x) \geq 0 \iff x \notin Target
+\begin{cases}
+J(x) < 0 \:\: \text{ for } \:\:x \in \mathcal{T} \setminus \partial\mathcal{T} \\
+J(x) = 0 \:\: \text{ for }\:\:x \in \partial\mathcal{T} \\
+J(x) > 0 \:\: \text{ for } \:\:x \notin \mathcal{T}
+\end{cases}
+```
+where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g. 
+
+```math
+\mathcal{T} := \big\{x \in \mathbb{R}^{n_x}  \:\: | \:\: (x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) \le 1 \big\} \rightarrow J(x) = \frac{1}{2} \big((x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) - 1 \big)
 ```
 
 ## Code Structure
