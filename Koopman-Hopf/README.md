@@ -5,3 +5,7 @@ Here we pair Koopman theory with the Hopf solution for approximate reachability 
 We generate and load Koopman models from [PyKoopman](https://github.com/dynamicslab/pykoopman) and [AutoKoopman](https://github.com/EthanJamesLew/AutoKoopman) and use our [HopfReachability](https://github.com/UCSD-SASLab/HopfReachability) codebase to solve the Hopf solution. Note, this (nontrivially) requires defining a target in the lifted space that corresponds to the true target set (see paper).
 
 The demos are limited to lifting with the identity function (Dynamic Mode Decomposition) and a Polynomial basis as they satisfy requirements for the Hopf problem (see paper) but also because they yielded solid results. Check back for future work with more complicated lifting procedures involving NN's, RBF's, RFF's etc.
+
+![Duffing_plot](http://htmlpreview.github.io/?https://github.com/UCSD-SASLab/HopfReachability/blob/main/Koopman-Hopf/Duffing_BRS_plot.html)
+
+![Duffing_plot_2](https://rawcdn.githack.com/UCSD-SASLab/HopfReachability/55feac7aa52cd3842c9b2d2298e15a924f7e1cbc/Koopman-Hopf/Duffing_BRS_plot.html)
