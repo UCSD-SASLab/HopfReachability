@@ -1,11 +1,11 @@
 # HopfReachability
 Code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games (control vs. disturbance) via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality. Based on the work of Yat Tin Chow, Jerome Darbon and Stan Osher.
 
-Currently, this method has been validated for problems with,
+Currently, this solution and algorithm are validated for,
 - Linear Time-Varying Dynamics
-- Games satisfying Isaacs' condition (min max = max min)
+- Differential Games with unique Nash Equilibria (min max = max min)
 
-Beware, if the Hamiltonian is nonconvex, which occurs when the disturbances exceed the control authority, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. In these settings, we reinitialize the optimization multiple times and in practice, we find that proximal methods converge to the global optimum within one or two guesses. Note, an erroneous value does not affect the solution at any other point (unless warm-starting).
+Beware, if the Hamiltonian is nonconvex, which occurs when the disturbance set exceeds the control set, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. In these settings, we reinitialize the optimization multiple times and in practice, we find that proximal methods converge to the global optimum within one or two guesses. Note, an erroneous value does not affect the solution at any other point (unless warm-starting).
 
 Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless, Yat Tin Chow, Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
 
