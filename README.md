@@ -45,7 +45,11 @@ where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g.
 
 ## Demo
 
-See the examples files
+See the Examples
+
+## Associated Publication
+
+[Koopman-Hopf Hamilton-Jacobi Reachability and Control](https://arxiv.org/abs/2303.11590)
 
 ## Future Work
 
@@ -60,3 +64,4 @@ On the solver side, we will build the ability to
 - autodiff the gradient for convex cases
 - parallelize the grid solving
 - readily call this toolbox from Python and Matlab
+
