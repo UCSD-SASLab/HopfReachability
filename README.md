@@ -1,13 +1,13 @@
 # HopfReachability
-Code for doing forwards and backwards reachability of optimal 2-player differential games (control vs. disturbance) via Hopf optimization of the Hamilton Jacobi Bellman equation. This method allows for solving the BRS value function in a fast, space-parallelizeable fashion. Based on the work of Yat Tin Chow, Jerome Darbon and Stan Osher.
+Code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games (control vs. disturbance) via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality. Based on the work of Yat Tin Chow, Jerome Darbon and Stan Osher.
 
 Currently, this method has been validated for problems with,
 - Linear Time-Varying Dynamics
 - Games satisfying Isaacs' condition (min max = max min)
 
-Beware, if the differential game is nonconvex, ie. if the allowable disturbance exceeds the control set, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. In practice, we reinitialize the optimization run a couple times and the global optimum is found within a few guesses on average; a wrong estimate does not affect the solution at any other point unless we are warm starting.
+Beware, if the Hamiltonian is nonconvex, which occurs when the disturbances exceed the control authority, then the Hopf objective is nonconvex and convergence to the global optimum (true viscosity solution value) is not guaranteed. In these settings, we reinitialize the optimization multiple times and in practice, we find that proximal methods converge to the global optimum within one or two guesses. Note, an erroneous value does not affect the solution at any other point (unless warm-starting).
 
-Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless & Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideasto advance this package and look forward to collaboration.
+Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless & Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
 
 ## Current Problem Formulation
 
@@ -29,25 +29,25 @@ J(x) \leq 0 \iff x \in Target \quad \& \quad J(x) = 0 \iff x \in \partial Target
 ## Code Structure
 
 - Hopf_BRS: fed a system, target and T, (optionally grid and optimization parameters) and makes a grid and performs optimization for points in the grid near the boundary of the target by calling,
-- Hopf_cd or Hopf_admm: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
+- Hopf_cd/Hopf_admm: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
 - Hopf: evaluates the value of the Hopf formula for a given value of x and v.
 - Hopf_minT: finds the minimum time such that a given state is reachable and returns the optimal control
-- plot_BRS: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot Value function
+- plot_BRS: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
 
 ## Demo
 
-See the demo HopfReachability.ipynb file
+See the examples files
 
 ## Future Work
 
 We will expand this toolbox to handle problems that include, 
-- Partnership with linearization techniques such as Koopman lifting
-- nonlinear systems (which require generalized Hopf formula which is complex to optimize)
-- higher dimensional target spaces (currently 2D + 1 value in any higher dimension)
+- nonlinear systems (which require generalized Hopf formula which is harder to optimize)
+- error analysis
+- more types of built-in target and constraint geometries
 
 On the solver side, we will build the ability to 
-- utilize the other optimization methods (PDHG) which have been shown to vastly improve the number of optimization reinitializations 
-- manually enter the gradient. 
-- autodiff the gradient
+- refine the value function based on Lipschitz bounds
+- utilize the other optimization methods (PDHG)
+- autodiff the gradient for convex cases
 - parallelize the grid solving
 - readily call this toolbox from Python and Matlab
