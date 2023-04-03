@@ -1,5 +1,17 @@
 # HopfReachability
-Code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games (control vs. disturbance) via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality. Based on the work of Yat Tin Chow, Jerome Darbon and Stan Osher.
+Code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games (control vs. disturbance) via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality.
+
+### Associated Publications
+
+[Algorithm for Overcoming the Curse of Dimensionality for State-dependent Hamilton-Jacobi equations](https://arxiv.org/pdf/1704.02524.pdf)
+
+[Algorithms for Overcoming the Curse of Dimensionality for Certain Hamilton-Jacobi Equations Arising in Control Theory and Elsewhere](https://arxiv.org/pdf/1605.01799.pdf)
+
+[Time-Optimal Collaborative Guidance Using the Generalized Hopf Formula](https://arxiv.org/pdf/1709.06590.pdf)
+
+[Koopman-Hopf Hamilton-Jacobi Reachability and Control](https://arxiv.org/abs/2303.11590)
+
+## 
 
 Currently, this solution and algorithm are validated for,
 - Linear Time-Varying Dynamics
@@ -9,7 +21,7 @@ Beware, if the Hamiltonian is nonconvex, which occurs when the disturbance set e
 
 Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless, Yat Tin Chow, Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
 
-## Current Problem Formulation
+## Problem Formulation
 
 Given a linear, time-varying system,
 ```math
@@ -46,10 +58,6 @@ where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g.
 ## Demo
 
 See the Examples
-
-## Associated Publication
-
-[Koopman-Hopf Hamilton-Jacobi Reachability and Control](https://arxiv.org/abs/2303.11590)
 
 ## Future Work
 
