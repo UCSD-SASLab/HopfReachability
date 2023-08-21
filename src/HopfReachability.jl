@@ -1,7 +1,7 @@
 module HopfReachability
 
 using LinearAlgebra, StatsBase, ScatteredInterpolation
-using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS
+using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS, LaTeXStrings
 plotlyjs()
 
 ##################################################################################################
@@ -26,14 +26,14 @@ end
 function Hopf_BRS(system, target, T;
                   opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
                   Xg=nothing, lg=0, ϵ=0.5e-7, nx=size(system[1])[1], 
-                  grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="spiral",
+                  grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="",
                   p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false)
 
     if printing; println("\nSolving Backwards Reachable Set,"); end
 
     if opt_method == Hopf_cd
-        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20) : opt_p
+        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p
         ρ, ρ2 = 1, 1
         admm = false
     elseif opt_method == Hopf_admm
@@ -41,7 +41,7 @@ function Hopf_BRS(system, target, T;
         ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1:2]
         admm = true
     elseif opt_method == Hopf_admm_cd
-        opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 100), (0.01, 5, ϵ, 500, 1, 4), 1, 1, 10) : opt_p 
+        opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 10), (0.01, 5, ϵ, 500, 1, 4, 2000), 1, 1, 10) : opt_p 
         ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1][1:2]
         admm = true
     end
@@ -181,7 +181,7 @@ function Hopf_minT(system, target, x;
     if depth_counter == 0; @suppress begin; tick(); end; end # timing
 
     if opt_method == Hopf_cd
-        opt_p = isnothing(opt_p) ? (0.01, 5, 1e-5, 500, 20, 20, 500) : opt_p
+        opt_p = isnothing(opt_p) ? (0.01, 5, 1e-5, 500, 20, 20, 2000) : opt_p
         ρ, ρ2 = 1, 1
         admm = false
     elseif opt_method == Hopf_admm
@@ -189,7 +189,7 @@ function Hopf_minT(system, target, x;
         ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1:2]
         admm = true
     elseif opt_method == Hopf_admm_cd
-        opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 100), (0.01, 5, 1e-5, 500, 1, 4, 100), 1, 1, 10) : opt_p 
+        opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 100), (0.01, 5, 1e-5, 500, 1, 4, 2000), 1, 1, 10) : opt_p 
         ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1][1:2]
         admm = true
     end
@@ -243,7 +243,7 @@ function Hopf_minT(system, target, x;
             end
             break; 
         end    
-        if Tˢ > maxT; println("!!! Not reachable under max time of $Tˢ !!!"); break; end    
+        if Tˢ > maxT && depth_counter == 0; println("!!! Not reachable under max time of $Tˢ !!!"); break; end    
 
         ## Update the t, to increase Tˢ
         t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
@@ -620,8 +620,8 @@ function boundary(ϕ; lg, N, δ = 20/N, nx=size(system[1])[1]) ## MULTI-D FIX
 end
 
 ## Plots BRS over T in X and Z space
-function plot_BRS(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
-    zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue], alpha=0.5, 
+function plot_BRS(T, B⁺T, ϕB⁺T; A=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+    zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=["red", "blue"], alpha=0.5, 
     title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2])
 
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
@@ -638,8 +638,8 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, 
     Jlabels = "J(⋅, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
     labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
 
-    Tcolors = length(T) > 1 ? palette(pal_colors, length(T)) : [pal_colors[2]]
-    B0colors = length(T) > 1 ? palette([:black, :gray], length(T)) : [:black]
+    Tcolors = length(T) > 1 ? palette(pal_colors, length(T)) : palette([pal_colors[2]], 2)
+    B0colors = length(T) > 1 ? palette(["black", "gray"], length(T)) : palette(["black"], 2)
     plot_colors = collect(Iterators.flatten(zip(B0colors, Tcolors)))
 
     ## Zipping Target to Plot Variation in Z-space over Time (already done in moving problems)
@@ -654,7 +654,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, 
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
         B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
-        Bs = zplot ? [B⁺0, B⁺, exp(-T[j] * M) * B⁺0, exp(-T[j] * M) * B⁺] : [B⁺0, B⁺]
+        Bs = zplot ? [B⁺0, B⁺, exp(-T[j] * A) * B⁺0, exp(-T[j] * A) * B⁺] : [B⁺0, B⁺]
 
         for (bi, b⁺) in enumerate(Bs)
             if simple_problem && bi == 1 && i !== 1; continue; end
@@ -672,7 +672,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, 
                 # scatter!(plots[Int(bi > 2) + 1], b[1,:], b[2,:], label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 
                 if value_fn
-                    scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims, ylims)
+                    scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims=xlims, ylims=ylims)
                     # scatter!(vfn_plots[Int(bi > 2) + 1], b[1,:], b[2,:], ϕ, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], label=label)
                 end
             
@@ -731,7 +731,7 @@ function mat_spiral(rows, cols)
     spiral_ix, unspiral_ix = [], []
     
     while length(spiral_ix) < rows * cols
-        for i in left:right; push!(spiral_ix, matr_ix[top,i]); end; top += 1
+        for i in left:right; push!(spiral_ix, matr_ix[top,i]); end; top += 1AIKCN
         for i in top:bottom; push!(spiral_ix, matr_ix[i,right]); end; right -= 1
         if top <= bottom; for i in right:-1:left; push!(spiral_ix, matr_ix[bottom,i]); end; bottom -= 1; end  
         if left <= right; for i in bottom:-1:top; push!(spiral_ix, matr_ix[i,left]); end; left += 1; end
