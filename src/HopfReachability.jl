@@ -1,6 +1,6 @@
 module HopfReachability
 
-using LinearAlgebra, StatsBase, ScatteredInterpolation
+using LinearAlgebra, StatsBase, ScatteredInterpolation, DifferentialEquations
 using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS, LaTeXStrings
 plotlyjs()
 
@@ -14,7 +14,7 @@ plotlyjs()
 
 
 ## Evaluate Hopf Cost
-function Hopf(system, target, tbH, z, v; p2, nx=size(system[1])[1])
+function Hopf(system, target, tbH, z, v; p2)
 
     J, Jˢ, Jp = target
     intH, Hdata = tbH
@@ -24,13 +24,12 @@ end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
 function Hopf_BRS(system, target, T;
-                  opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
-                  Xg=nothing, lg=0, ϵ=0.5e-7, nx=size(system[1])[1], 
-                  grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="",
+                  opt_method=Hopf_cd, inputshape="ball", preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, Φ=nothing,
+                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="",
                   p2=true, plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false)
 
-    if printing; println("\nSolving Backwards Reachable Set,"); end
+    if printing; println("\nPrecomputation, ..."); end
 
     if opt_method == Hopf_cd
         opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p
@@ -48,6 +47,9 @@ function Hopf_BRS(system, target, T;
 
     ## Initialize
     simple_problem = !moving_grid && !moving_target
+    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+                      (preH, intH, HJoc))
 
     J, Jˢ, Jp = target
     M, A, c = system[1], Jp[1], Jp[2]
@@ -57,18 +59,21 @@ function Hopf_BRS(system, target, T;
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T, v_init = [], [], [], [], [], [], nothing
     averagetimes, pointstocheck, N = [], [], 0
 
+    ## Precomputation
+    Hmats, Φ = preH(system, target, t; admm, ρ, ρ2, Φ)
+    nx = size(Hmats[1])[2]
+
     ## Grid Set Up
     if isnothing(Xg)
         bd, N = grid_p
         lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
         xig = collect(lb : 1/N : ub) .+ ϵ; lg = length(xig)
         Xg = hcat(collect.(Iterators.product([xig for i in 1:nx]...))...)[end:-1:1,:]
-        #takes a while in REPL, but not when timed...
+        #takes a while in REPL, but not when timed... ## TODO : Do this better
 
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # fix!
-        # lg = Int.([sqrt(size(Xg[i])[2]) for i in eachindex(Xg)])
     end
 
     ## Compute Near-Boundary set of Target in X
@@ -79,16 +84,14 @@ function Hopf_BRS(system, target, T;
             B⁺, ϕB⁺ = Xg, ϕX
             index = warm && warm_pattern == "spiral" ? mat_spiral(lg, lg)[1] : collect(1:length(ϕX))
         else
-            index = boundary(ϕX; lg, N, nx=nx)
+            index = boundary(ϕX; lg, N, nx)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
         end
 
         push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺)) # for plotting ϕ0
     end
 
-    ## Precomputation
-    Hmats = preH(system, target, t; admm, ρ, ρ2)
-
+    if printing; println("\nSolving Backwards Reachable Set,"); end
     @suppress begin; tick(); end # timing
 
     ## Loop Over Time Frames
@@ -110,19 +113,19 @@ function Hopf_BRS(system, target, T;
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
-                index = boundary(ϕX; lg=lgi, N=Ni, nx=nx)
+                index = boundary(ϕX; lg=lgi, N=Ni, nx)
                 B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
             end
 
             push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺))
         end
 
-        if isempty(index)
-            if printing; println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ)); end
+        if isempty(index) && printing 
+            println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
         end
 
         ## Map X to Z
-        B⁺z = exp(Ti * M) * B⁺
+        B⁺z = Φ(Ti) * B⁺
         target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
@@ -150,14 +153,14 @@ function Hopf_BRS(system, target, T;
         ## Update Near-Boundary index to intermediate solution
         if simple_problem && Tix != length(T) && !check_all
             ϕX[index] = ϕB⁺
-            index = boundary(ϕX; lg, N, nx=nx)
+            index = boundary(ϕX; lg, N, nx)
             B⁺, ϕB⁺ = Xg[:, index], ϕX[index]
         end
     end
     
     totaltime = tok()
 
-    if plotting; plot_BRS(T, B⁺T, ϕB⁺T; M, simple_problem, zplot); end
+    if plotting; plot_BRS(T, B⁺T, ϕB⁺T; Φ, simple_problem, zplot); end
     if printing; println("TOTAL TIME: $totaltime s"); end
     if printing; println("MEAN TIME[s] PER TIME POINT: $averagetimes"); end
     if printing; println("TOTAL POINTS PER TIME POINT: $pointstocheck"); end
@@ -170,12 +173,11 @@ end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
 function Hopf_minT(system, target, x; 
-                  opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
-                  T_init=nothing, v_init_=nothing,
+                  opt_method=Hopf_cd, inputshape="ball", preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball,
+                  T_init=nothing, v_init_=nothing, Φ=nothing,
                   time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
                   refine=0.5, refines=2, depth_counter=0,
-                  nx=size(system[1])[2], p2=true, printing=false,
-                  moving_target=false, warm=false)
+                  p2=true, printing=false, moving_target=false, warm=false)
 
     if printing && depth_counter == 0; println("\nSolving Optimal Control at x=$x,"); end
     if depth_counter == 0; @suppress begin; tick(); end; end # timing
@@ -194,6 +196,11 @@ function Hopf_minT(system, target, x;
         admm = true
     end
 
+    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+                      (preH, intH, HJoc))
+
+    M = system[1]
     J, Jˢ, Jp = target
     th, Th, maxT = time_p; 
     uˢ, dˢ, Tˢ, ϕ, dϕdz = 0, 0, 0, 0, 0
@@ -201,14 +208,18 @@ function Hopf_minT(system, target, x;
 
     ## Initialize ϕs
     ϕ, dϕdz = Inf, 0
-    v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
+    v_init = isnothing(v_init_) ? nothing : copy(v_init_)
 
-    ## Precomputing some of H for efficiency
-    Hmats = preH(system, target, t; ρ, ρ2, admm)
+    ## Precompute entire Φ for speed
+    Φ = isnothing(Φ) ? (!(typeof(M) <: Function) ? s->exp(s*M) : solveΦ(M, collect(th:th:maxT))[2]) : Φ
+
+    ## Precomputing some of H for efficiency (#TODO check its faster than solving (0., maxT) once)
+    Hmats, _ = preH(system, target, t; ρ, ρ2, admm, Φ)
 
     ## Loop Over Time Frames until ϕ(z, T) > 0
     Thi = 0; Tˢ = t[end]
     while ϕ > tol
+
         if printing; println("   checking T = $Tˢ..."); end
         tix = length(t)
         Tix = Thi + 1
@@ -222,7 +233,7 @@ function Hopf_minT(system, target, x;
         tbH = (intH, Hdata)
 
         ## Hopf-Solving to check current Tˢ
-        z = exp(Tˢ * system[1]) * x;
+        z = Φ(Tˢ) * x;
         ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
         v_init = warm ? copy(dϕdz) : nothing
 
@@ -235,7 +246,7 @@ function Hopf_minT(system, target, x;
                                     time_p=(th*refine, Th*refine, Tˢ+Th), # refine t params
                                     T_init = Thi == 0 ? T_init : (Tˢ-Th), # initialize 1 Th step back unless first step
                                     refines=refines-1, depth_counter=depth_counter+1,
-                                    v_init_ = warm ? copy(dϕdz) : nothing,
+                                    v_init_ = warm ? copy(dϕdz) : nothing, Φ,
                                     refine, printing, opt_method, opt_p, preH, intH, HJoc, tol, p2, moving_target, warm);
 
             elseif printing; 
@@ -249,9 +260,9 @@ function Hopf_minT(system, target, x;
         t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
         Tˢ, Thi = t[end], Thi + 1
 
-        ## Parsimoniously amending Hdata for increased final time
+        ## Parsimoniously amending Hdata for increased final time (#TODO check its faster than solving (0., maxT) once)
         F_init = admm ? Hmats[end] : nothing
-        Hmats_ext = preH(system, target, t_ext; ρ, ρ2, admm, F_init)
+        Hmats_ext, _ = preH(system, target, t_ext; ρ, ρ2, admm, F_init, Φ)
         Rt_ext, R2t_ext = Hmats_ext[1], Hmats_ext[2]
         Rt, R2t  = vcat(Hmats[1], Rt_ext), vcat(Hmats[2], R2t_ext)
         Hmats = (Rt, R2t, Hmats[3:end-1]..., Hmats_ext[end])
@@ -260,7 +271,7 @@ function Hopf_minT(system, target, x;
 
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
     if depth_counter == 0
-        uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2)
+        uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2, Φ)
 
         totaltime = tok()
         if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
@@ -272,7 +283,7 @@ end
 
 # ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, Bisection Method (Will Only Work for BRTs)
 # function Hopf_minT_BM(system, target, x; 
-#     opt_method=Hopf_cd, preH=preH_ytc17, intH=intH_ytc17, HJoc=HJoc_ytc17,
+#     opt_method=Hopf_cd, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball,
 #         T_init=nothing, v_init_=nothing,
 #         time_p=(0.02, 0.1, 1.), opt_p=nothing, 
 #         nx=size(system[1])[2], p2=true, printing=false, moving_target=false, warm=false)
@@ -321,7 +332,7 @@ end
 #         tbH = (intH, Hdata)
 
 #         ## Hopf-Solving to check current Tˢ
-#         z = exp(Tˢ * system[1]) * x
+#         z = Φ(Tˢ * system[1]) * x
 #         ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, tbH, opt_p, v_init)
 #         v_init = warm ? copy(dϕdz) : nothing
 
@@ -367,7 +378,7 @@ end
 
 
 ## Iterative Coordinate Descent of the Hopf Cost at Point z
-function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(system[1])[1])
+function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=length(z))
 
     vh, L, tol, lim, lll, max_runs, max_its = opt_p
     solution, v = 1e9, nothing
@@ -441,13 +452,14 @@ function Hopf_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(syst
 end
 
 ## Proximal Splitting Algorithm for optimizing the Hopf Cost at point z (vectorized)
-function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function Hopf_admm(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=length(z))
 
     ## Initialize
     M, B, C, Q, Q2, a, a2 = system
     ρ, ρ2, tol, max_its = opt_p
     Hmats, tix, th = tbH[2]
     Rt, R2t, F = Hmats[1:2]..., Hmats[end] # TODO transfer SVD from preH
+    nu, nd = size(Q)[1], size(Q2)[1]
 
     U, Σ, Vt    = svd(Q * ρ)  # TODO transfer this from preH
     U2, Σ2, Vt2 = svd(Q2 / ρ2)
@@ -568,7 +580,7 @@ end
 # end
 
 ## ADMM-CD Hybrid Method
-function Hopf_admm_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=size(system[1])[1])
+function Hopf_admm_cd(system, target, z; p2, tbH, opt_p, v_init=nothing, nx=length(z))
 
     opt_p_admm, opt_p_cd, ρ_grid_pts, ρ2_grid_pts, runs = opt_p
     max_ϕz, argmax_dϕdz, argmax_dϕdz_arr, v_arr_admm, min_k = -Inf, nothing, nothing, nothing, nothing
@@ -607,7 +619,7 @@ end
 ##################################################################################################
 
 ## Find points near boundary ∂ of f(z) = 0
-function boundary(ϕ; lg, N, δ = 20/N, nx=size(system[1])[1]) ## MULTI-D FIX
+function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 
     A = Float64.(abs.(reshape(ϕ, [lg for i=1:nx]...)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     # A = Float64.(abs.(reshape(ϕ, lg, lg)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
@@ -620,17 +632,21 @@ function boundary(ϕ; lg, N, δ = 20/N, nx=size(system[1])[1]) ## MULTI-D FIX
 end
 
 ## Plots BRS over T in X and Z space
-function plot_BRS(T, B⁺T, ϕB⁺T; A=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
     zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=["red", "blue"], alpha=0.5, 
-    title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2])
+    title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
 
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
-    Xplot = isnothing(title) ? Plots.plot(title="BRS: Φ(X, T) = 0") : Plots.plot(title=title)
-    if zplot; Zplot = Plots.plot(title="BRS: Φ(Z, T) = 0"); end
+    if isnothing(base_plot)
+        Xplot = isnothing(title) ? Plots.plot(title="BRS: ϕ(X, T) = 0") : Plots.plot(title=title)
+    else
+        Xplot = base_plot
+    end
+    if zplot; Zplot = Plots.plot(title="BRS: ϕ(Z, T) = 0"); end
 
     plots = zplot ? [Xplot, Zplot] : [Xplot]
-    if value_fn; vfn_plots = zplot ? [Plots.plot(title="Value: Φ(X, T)"), Plots.plot(title="Value: Φ(Z, T)")] : [Plots.plot(title="Value: Φ(X, T)")]; end
+    if value_fn; vfn_plots = zplot ? [Plots.plot(title="Value: ϕ(X, T)"), Plots.plot(title="Value: ϕ(Z, T)")] : [Plots.plot(title="Value: ϕ(X, T)")]; end
 
     B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
     
@@ -654,7 +670,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; A=nothing, simple_problem=true, ϵs = 0.1, 
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
         B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
-        Bs = zplot ? [B⁺0, B⁺, exp(-T[j] * A) * B⁺0, exp(-T[j] * A) * B⁺] : [B⁺0, B⁺]
+        Bs = zplot ? [B⁺0, B⁺, Φ(-T[j]) * B⁺0, Φ(-T[j]) * B⁺] : [B⁺0, B⁺]
 
         for (bi, b⁺) in enumerate(Bs)
             if simple_problem && bi == 1 && i !== 1; continue; end
@@ -746,6 +762,16 @@ function mat_spiral(rows, cols)
     return spiral_ix, unspiral_ix
 end
 
+## Solve the Fundamental i.e. Flow-map for a Time-Varying Linear System
+function solveΦ(A, t; alg=Tsit5())
+    print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); 
+    nx = typeof(A) <: Function ? size(A(t[1]))[1] : size(A[1])[1];
+    f = typeof(A) <: Function ? (U,p,s) -> A(s) * U : (U,p,s) -> A[findfirst(x->x<=0, (s .- t))] * U
+    sol = solve(ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg);
+    print("LTV System inputted, integrating Φ(t)... Success!\n");
+    return sol
+end
+
 
 ##################################################################################################
 ##################################################################################################
@@ -759,11 +785,12 @@ end
 ### Ellipsoid-Constrained Inputs (Ellipse norm, 2-norm w SVD)
 
 ## Time integral of Hamiltonian for YTC et al. 2017, quadratic control constraints
-function intH_ytc17(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function intH_ball(system, Hdata, v; p2)
 
     M, C, C2, Q, Q2, a, a2 = system
     Hmats, tix, th = Hdata
     Rt, R2t, G, G2, F = Hmats
+    nu, nd = size(Q)[1], size(Q2)[1]
 
     ## Quadrature mats
     Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
@@ -776,23 +803,30 @@ function intH_ytc17(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[
 end
 
 ## Hamiltonian Precomputation
-function preH_ytc17(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function preH_ball(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, Φ=nothing)
 
     M, C, C2, Q, Q2, a, a2 = system
     J, Jˢ, Jp = target
     th = t[2]
 
+    ## Solve Φ
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t) : s->exp(s*M)) : Φ; Φt = Φ.(t)
+    nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
+
     ## Transformation Mats R := (exp(-(T-t)M)C)' over t
     Rt, R2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
 
-    ## Precomputing ADMM matrix
+    ## Precompute ADMM matrix
     F = isnothing(F_init) ? Jp[1] : inv(F_init) ## TODO (admm only) only works when c (in J) == 0, need to include c in update_v on other side of eqn
 
-    for sstep in eachindex(t)
-        R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
+    ## Precompute Rt Mats
+    for si in eachindex(t)
+        Cti = typeof(C) <: Function ? C.(si) : (length(size(C)) == 2 ? C : C[si])
+        C2ti = typeof(C2) <: Function ? C2.(si) : (length(size(C2)) == 2 ? C2 : C2[si])  
+        R, R2 = -(Φt[si] * Cti)', -(Φt[si] * C2ti)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
-        Rt[ nu*(sstep-1) + 1 : nu*sstep, :] = R;
-        R2t[nd*(sstep-1) + 1 : nd*sstep, :] = R2;
+        Rt[ nu*(si-1) + 1 : nu*si, :] = R;
+        R2t[nd*(si-1) + 1 : nd*si, :] = R2;
     end
 
     ## Precomputing SVD for matrix sqrt
@@ -806,14 +840,20 @@ function preH_ytc17(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, 
     ## Precomputing ADMM matrix
     F = admm ? inv(F) : F
 
-    return Rt, R2t, G, G2, F
+    return (Rt, R2t, G, G2, F), Φ
 end
 
 ## Optimal HJB Control
-function HJoc_ytc17(system, dϕdz, T; p2=true, Hdata=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function HJoc_ball(system, dϕdz, T; p2=true, Hdata=nothing, Φ=nothing)
 
     M, C, C2, Q, Q2, a, a2 = system
-    R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
+    nu, nd = size(Q)[1], size(Q2)[1]
+    
+    ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
+    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
+    CT  = typeof(C)  <: Function ? C(T)  : C
+    C2T = typeof(C2) <: Function ? C2(T) : C2
+    R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
 
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
@@ -830,11 +870,12 @@ end
 ### Box-Constrained Inputs (Inf norm)
 
 ## Time integral of Hamiltonian for MRK et al. 2018, inf-norm control constraints
-function intH_mrk18(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function intH_box(system, Hdata, v; p2)
 
     M, C, C2, Q, Q2, a, a2 = system
     Hmats, tix, th = Hdata
     QRt, QR2t, F = Hmats
+    nu, nd = size(Q)[1], size(Q2)[1]
 
     ## Quadrature mats
     QRvt, QR2vt = reshape(view(QRt,1:nu*tix,:) * v, nu, tix), reshape(view(QR2t,1:nd*tix,:) * v, nd, tix)
@@ -847,33 +888,46 @@ function intH_mrk18(system, Hdata, v; p2, nx=size(system[1])[1], nu=size(system[
 end
 
 ## Hamiltonian Precomputation
-function preH_mrk18(system, target, t; ρ=1, ρ2=1, admm=false, F_init=false, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function preH_box(system, target, t; ρ=1, ρ2=1, admm=false, F_init=false, Φ=nothing)
 
     M, C, C2, Q, Q2, a, a2 = system
     J, Jˢ, Jp = target
     th = t[2]
-    
+
+    ## Solve Φ
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t) : s->exp(s*M)) : Φ; Φt = Φ.(t)
+    nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
+
     ## Precomputing ADMM matrix
     F = isnothing(F_init) ? Jp[1] : inv(F_init) ## THIS ONLY WORKS WHEN c == 0 (admm only), ... unless we move c over todo
 
     ## Transformation Mats Q * R := Q * (exp(-(T-t)M)C)' over t
     QRt, QR2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
-    for sstep in eachindex(t)
-        R, R2 = - (exp(t[sstep] * M) * C)', - (exp(t[sstep] * M) * C2)';
+    for si in eachindex(t)
+        Cti = typeof(C) <: Function ? C.(si) : (length(size(C)) == 2 ? C : C[si])
+        C2ti = typeof(C2) <: Function ? C2.(si) : (length(size(C2)) == 2 ? C2 : C2[si])  
+        R, R2 = -(Φt[si] * Cti)', -(Φt[si] * C2ti)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F  ## Does this need to be adapated for ADMM + Box?
-        QRt[nu*(sstep-1) + 1 : nu*sstep, :], QR2t[nd*(sstep-1) + 1 : nd*sstep, :] = Q * R, Q2 * R2
+        QRt[nu*(si-1) + 1 : nu*si, :], QR2t[nd*(si-1) + 1 : nd*si, :] = Q * R, Q2 * R2
     end
 
     F = admm ? inv(F) : F
 
-    return QRt, QR2t, F
+    return (QRt, QR2t, F), Φ
 end
 
 ## Optimal HJB Control # todo: check graphically
-function HJoc_mrk18(system, dϕdz, T; p2=true, Hdata=nothing, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function HJoc_box(system, dϕdz, T; p2=true, Hdata=nothing, Φ=nothing)
 
     M, C, C2, Q, Q2, a, a2 = system
-    R, R2 = -(exp(T * M) * C)', -(exp(T * M) * C2)'
+    nu, nd = size(Q)[1], size(Q2)[1]
+
+    ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
+    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
+    CT  = typeof(C)  <: Function ? C(T)  : C
+    C2T = typeof(C2) <: Function ? C2(T) : C2
+    R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
+
     QR, QR2 = Q * R, Q2 * R2
 
     # uˢ = inv(R') * QR * sign.(QR * dϕdz)
@@ -888,27 +942,33 @@ end
 
 ### Standard Hamiltonian precomputation fn
 
-function preH_std(system, target, t; ρ=1, ρ2=1, admm=false, nx=size(system[1])[1], nu=size(system[2])[2], nd=size(system[3])[2])
+function preH_std(system, target, t; ρ=1, ρ2=1, admm=false, Φ=nothing)
 
     M, C, C2, Q, Q2, a, a2 = system
     J, Jˢ, Jp = target
     th = t[2]
+
+    ## Solve Φ
+    Φ = isnothing(Φ) ? (!(typeof(M) <: Function) || length(size(M)) == 2 ? s->exp(s*M) : solveΦ(M, t)) : Φ; Φt = Φ.(t) 
+    nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
 
     ## Precomputing ADMM matrix
     F = Jp[1]
 
     ## Transformation Mats R := (exp(-(T-t)M)C)' over t
     Rt, R2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
-    for sstep in eachindex(t)
-        R, R2 = -(exp(t[sstep] * M) * C)', -(exp(t[sstep] * M) * C2)'
+    for si in eachindex(t)
+        Cti = typeof(C) <: Function ? C.(si) : (length(size(C)) == 2 ? C : C[si])
+        C2ti = typeof(C2) <: Function ? C2.(si) : (length(size(C2)) == 2 ? C2 : C2[si])  
+        R, R2 = -(Φt[si] * Cti)', -(Φt[si] * C2ti)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
-        Rt[ nu*(sstep-1) + 1 : nu*sstep, :] = R;
-        R2t[nd*(sstep-1) + 1 : nd*sstep, :] = R2;
+        Rt[ nu*(si-1) + 1 : nu*si, :] = R;
+        R2t[nd*(si-1) + 1 : nd*si, :] = R2;
     end
 
     F = admm ? inv(F) : F
 
-    return Rt, R2t, F
+    return (Rt, R2t, F), Φ
 end
 
 end
@@ -917,5 +977,6 @@ end
 ### WAYS THIS PKG CAN BE IMPROVED:
 # - Parallelization
 # - Sparse Arrays
-# - BALL vs. BOX constraint clean up
-# - Integration with other optimizers (& Automatic differentiation)
+# - Type Declaration
+# - Automatic Convex Conjugate
+# - Integration with other optimizers (& Automatic differentiation?)
