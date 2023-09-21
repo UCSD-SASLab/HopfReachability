@@ -1,4 +1,4 @@
-# HopfReachability.jl
+![LTV_demo](https://github.com/UCSD-SASLab/HopfReachability/assets/52509586/66b88111-7797-4d0b-aaf9-a96af28b3b09)# HopfReachability.jl
 Julia code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality.
 
 Note, in comparison with differential inclusions/zonotoping methods ([`ReachabilityAnalysis.jl`](https://github.com/JuliaReach/ReachabilityAnalysis.jl)), which overapproximate all reachable trajectories, Hamilton-Jacobi Reachability is based on assuming a differential game and yields the reachable set for an optimal controller despite any action of the disturbance. See [`hj_reachability.py`](https://github.com/StanfordASL/hj_reachability) or [`helperOC.m`](https://github.com/HJReachability/helperOC) for dynamic programming (dimension-sensitive) solutions to this problem.
@@ -158,7 +158,9 @@ TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
 ```
 Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions,
 
-
+<p align="center">
+  <img src="./Koopman-Hopf/Figures/LTV_demo.png" width="800">
+</p>
 
 See the /Examples for more.
 
