@@ -159,8 +159,7 @@ TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
 Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions,
 
 <p align="center">
-<!--   <img src="./Koopman-Hopf/Figures/LTV_demo.png" width="800"> -->
-   <img src="https://github.com/UCSD-SASLab/HopfReachability/assets/52509586/16bfbb76-2328-49eb-9b27-daacdd67d582">
+  <img src="./Koopman-Hopf/Figures/LTV_demo.png" width="800">
 </p>
 
 See the /Examples for more.
