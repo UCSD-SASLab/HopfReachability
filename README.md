@@ -57,7 +57,7 @@ where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g.
 - `Hopf`: evaluates the value of the Hopf formula for a given value of x and v.
 - `Hopf_minT`: finds the minimum time such that a given state is reachable and returns the optimal control
 - `plot_BRS`: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
-- `preH`, `intH`, `HJoc`: utility fn's for partial precomputing, integrating with precomputed data, solving the optimal control respectivley
+- `preH`, `intH`, `HJoc`: utility fn's for precomputing, integrating with precomputed data, solving the optimal control respectivley
 
 ## Demo
 
