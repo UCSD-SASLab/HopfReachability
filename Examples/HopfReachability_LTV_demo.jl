@@ -13,9 +13,9 @@ T = collect(Th : Th : Tf)
 ## Initialize (2D Example)
 max_u, max_d = 1.0, 0.5
 
-A = - [0. float(pi); -float(pi) 0.]
-At = [if s < 11; A; else; -A; end; for s=1:Int(T[end]/th)]
-Af(s) = - 2s * [0. float(pi); -float(pi) 0.]
+A = -[0. float(pi); -float(pi) 0.]
+At = [if s <= T[end]/2th; -A; else; A; end; for s=1:Int(T[end]/th)]
+Af(s) = 2 * (Tf - s) * A
 
 B₁, B₂ = [1. 0; 0 1], [1. 0; 0 1];
 B₁t, B₂t = [[1. 0; 0 1] for s=1:Int(T[end]/th)], [[1. 0; 0 1] for s=1:Int(T[end]/th)];
@@ -40,19 +40,14 @@ Jˢ(v::Matrix, Qₓ, cₓ) = diag(v' * Qₓ * v)/2 + (cₓ'v)' .+ 0.5 * r^2 #don
 target = (J, Jˢ, (Qₓ, cₓ))
 
 ## Automatic Grid Parameters (can also define matrix of points Xg)
-ϵ = 0.5e-7; res = 100; lbc, ubc = -3., 3.;
+ϵ = 0.5e-7; res = 20; lbc, ubc = -3., 3.;
 x1g = collect(cₓ[1] + lbc : (ubc-lbc)/(res-1) : cₓ[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
 x2g = collect(cₓ[2] + lbc : (ubc-lbc)/(res-1) : cₓ[2] + ubc) .+ ϵ; lg2 = length(x2g);
 Xg = hcat(collect.(Iterators.product(x1g, x2g))...);
 
 ## Hopf Coordinate-Descent Parameters (optional)
-vh = 0.01
-L = 5
-tol = ϵ
-lim = 500
-lll = 5
-max_runs = 3
-max_its = 500
+vh = 0.01; L = 5; tol = ϵ; lim = 500; lll = 5
+max_runs = 3; max_its = 500
 opt_p_cd = (vh, L, tol, lim, lll, max_runs, max_its)
 
 # Hopf ADMM Parameters (optional)
@@ -63,7 +58,7 @@ opt_p_admm = (ρ, ρ2, tol, max_its)
 
 # ADMM-CD Hybrid Parameters (optional)
 ρ_grid_vals = 1 
-hybrid_runs = 3
+hybrid_runs = 3 
 opt_p_admm_cd = ((1e-1, 1e-1, 1e-5, 3), (0.005, 5, 1e-4, 500, 1, 3, 500), ρ_grid_vals, ρ_grid_vals, hybrid_runs)
 
 solution, run_stats = Hopf_BRS(system, target, T; th, Xg, inputshape, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
@@ -72,13 +67,12 @@ solution_f, run_stats = Hopf_BRS(system_f, target, T; th, Xg, inputshape, opt_me
 
 # plot_scatter = plot_BRS(T, solution...; A, ϵs=1e-1, interpolate=false, value_fn=false, alpha=0.1)
 plot_contour = plot_BRS(T, solution...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A - Hopf")
-plot_contour_t = plot_BRS(T, solution_t...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="At[:] - Hopf")
+plot_contour_t = plot_BRS(T, solution_t...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="Aₜ - Hopf")
 plot_contour_f = plot_BRS(T, solution_f...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - Hopf")
 
 ### Get the "True" BRS from hj_reachability.py
 
 ## For hj_reachability
-using Pkg
 using PyCall
 
 hj_r_loc = pwd() * "/Linearizations"
@@ -147,7 +141,7 @@ DP_values = (jnp.array(np.sum(np.multiply(inv.(diag(Qₓ)), np.square(np.subtrac
 BRS = hj.SolverSettings.with_accuracy("very_high", hamiltonian_postprocessor = x -> x)
 
 dynamics = Linear(A, B₁, B₂; max_u, max_d)
-dynamics_f = Linear(s -> Af(-s), B₁, B₂; max_u, max_d) # t going backwards in DP
+dynamics_f = Linear(s -> Af(Tf + s), B₁, B₂; max_u, max_d) # t going backwards in DP
 
 ### Solve BRS with DP
 
@@ -167,7 +161,7 @@ end
 ## Reinitializing (Array of t)
 values = jnp.copy(DP_values)
 for (tsi, ts) in enumerate(collect(th:th:T[end]))
-    dynamics_t = Linear(At[tsi], B₁, B₂; max_u, max_d)
+    dynamics_t = Linear(At[end:-1:1][tsi], B₁, B₂; max_u, max_d)
     hj_r_output_t = hj.step(BRS, dynamics_t, DP_grid, 0., values, -th)
     values = jnp.copy(hj_r_output_t)
     if ts ∈ T; push!(ϕXT_DP_t, Matrix(reshape(hj_r_output_t.tolist(), length(hj_r_output_t.tolist()), 1))[:,1]); end
@@ -175,8 +169,8 @@ end
 
 Xgs = [Xg for i=1:length(T)+1] # for plotting
 BRS_plots = plot_BRS(T, Xgs, ϕXT_DP; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A - DP")
-BRS_plot_t = plot_BRS(T, Xgs, ϕXT_DP_t; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="At[:] - DP")
+BRS_plot_t = plot_BRS(T, Xgs, ϕXT_DP_t; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="Aₜ - DP")
 BRS_plots_f = plot_BRS(T, Xgs, ϕXT_DP_f; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - DP")
 
-plot(plot_contour[1], plot_contour_t[1], plot_contour_f[1], 
-    BRS_plots[1], BRS_plot_t[1], BRS_plots_f[1], layout=(2,3))
+fig = plot(plot_contour[1], plot_contour_t[1], plot_contour_f[1], 
+    BRS_plots[1], BRS_plot_t[1], BRS_plots_f[1], layout=(2,3), size=(800,500))
