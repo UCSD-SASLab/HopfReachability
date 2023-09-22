@@ -766,7 +766,7 @@ end
 function solveΦ(A, t; alg=Tsit5())
     print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); 
     nx = typeof(A) <: Function ? size(A(t[1]))[1] : size(A[1])[1];
-    f = typeof(A) <: Function ? (U,p,s) -> A(s) * U : (U,p,s) -> A[findfirst(x->x<=0, (s .- t))] * U
+    f = typeof(A) <: Function ? (U,p,s) -> U * A(t[end] - s) : (U,p,s) -> U * A[end:-1:1][findfirst(x->x<=0, (-t .+ s))]
     sol = solve(ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg);
     print("LTV System inputted, integrating Φ(t)... Success!\n");
     return sol
@@ -821,8 +821,8 @@ function preH_ball(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, �
 
     ## Precompute Rt Mats
     for si in eachindex(t)
-        Cti = typeof(C) <: Function ? C.(si) : (length(size(C)) == 2 ? C : C[si])
-        C2ti = typeof(C2) <: Function ? C2.(si) : (length(size(C2)) == 2 ? C2 : C2[si])  
+        Cti = typeof(C) <: Function ? C.(t[end] - si) : (length(size(C)) == 2 ? C : C[end:-1:1][si])
+        C2ti = typeof(C2) <: Function ? C2.(t[end] - si) : (length(size(C2)) == 2 ? C2 : C2[end:-1:1][si])  
         R, R2 = -(Φt[si] * Cti)', -(Φt[si] * C2ti)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F
         Rt[ nu*(si-1) + 1 : nu*si, :] = R;
@@ -851,8 +851,8 @@ function HJoc_ball(system, dϕdz, T; p2=true, Hdata=nothing, Φ=nothing)
     
     ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
     Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
-    CT  = typeof(C)  <: Function ? C(T)  : C
-    C2T = typeof(C2) <: Function ? C2(T) : C2
+    CT  = typeof(C)  <: Function ? C(t[end] - T)  : C
+    C2T = typeof(C2) <: Function ? C2(t[end] - T) : C2
     R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
 
     _,Σ,VV = svd(Q);
@@ -904,8 +904,8 @@ function preH_box(system, target, t; ρ=1, ρ2=1, admm=false, F_init=false, Φ=n
     ## Transformation Mats Q * R := Q * (exp(-(T-t)M)C)' over t
     QRt, QR2t = zeros(nu*length(t), nx), zeros(nd*length(t), nx);
     for si in eachindex(t)
-        Cti = typeof(C) <: Function ? C.(si) : (length(size(C)) == 2 ? C : C[si])
-        C2ti = typeof(C2) <: Function ? C2.(si) : (length(size(C2)) == 2 ? C2 : C2[si])  
+        Cti = typeof(C) <: Function ? C.(t[end] - si) : (length(size(C)) == 2 ? C : C[end:-1:1][si])
+        C2ti = typeof(C2) <: Function ? C2.(t[end] - si) : (length(size(C2)) == 2 ? C2 : C2[end:-1:1][si])  
         R, R2 = -(Φt[si] * Cti)', -(Φt[si] * C2ti)'
         F = admm ? F + th * ((ρ * R' * R) + (ρ2 * R2' * R2)) : F  ## Does this need to be adapated for ADMM + Box?
         QRt[nu*(si-1) + 1 : nu*si, :], QR2t[nd*(si-1) + 1 : nd*si, :] = Q * R, Q2 * R2
@@ -924,8 +924,8 @@ function HJoc_box(system, dϕdz, T; p2=true, Hdata=nothing, Φ=nothing)
 
     ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
     Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
-    CT  = typeof(C)  <: Function ? C(T)  : C
-    C2T = typeof(C2) <: Function ? C2(T) : C2
+    CT  = typeof(C)  <: Function ? C(t[end] - T)  : C
+    C2T = typeof(C2) <: Function ? C2(t[end] - T) : C2
     R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
 
     QR, QR2 = Q * R, Q2 * R2
