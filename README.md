@@ -61,7 +61,7 @@ where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g.
 
 ## Demo
 
-Here we solve the Backwards Reachable Sets for three linear time-varying systems with an elliptical target, inputs confined to the unit ball, and coordinate descent. Note, when solving the BRS, the value at each point is determined independently (and hence parallellizeable) and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
+Here we solve the Backwards Reachable Sets for three simple, time-varying systems with an elliptical target, inputs confined to the unit ball, and coordinate descent. Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
 
 ```
 using LinearAlgebra, Plots
@@ -93,19 +93,19 @@ system_t = (At, max_u * B₁, max_d * B₂, Q₁, Q₂, c₁, c₂)
 system_f = (Af, s -> max_u * B₁f(s), s -> max_d * B₂f(s), Q₁, Q₂, c₁, c₂)
 
 ## Target: J(x) = 0 is the boundary of the target
-Qₓ = diagm([4; 1])
-cₓ = zero(A[:,1])
-r = 1.0
+Qₓ = diagm([1; 1])
+cₓ = [-1.; 1.]
+r = 1.0/2
 J(x::Vector, Qₓ, cₓ) = ((x - cₓ)' * inv(Qₓ) * (x - cₓ))/2 - 0.5 * r^2 #don't need yet
 Jˢ(v::Vector, Qₓ, cₓ) = (v' * Qₓ * v)/2 + cₓ'v + 0.5 * r^2
 J(x::Matrix, Qₓ, cₓ) = diag((x .- cₓ)' * inv(Qₓ) * (x .- cₓ))/2 .- 0.5 * r^2
 Jˢ(v::Matrix, Qₓ, cₓ) = diag(v' * Qₓ * v)/2 + (cₓ'v)' .+ 0.5 * r^2 #don't need yet
 target = (J, Jˢ, (Qₓ, cₓ))
 
-## Define the Grid (optional)
-ϵ = 0.5e-7; res = 20; lbc, ubc = -3., 3.;
-x1g = collect(cₓ[1] + lbc : (ubc-lbc)/(res-1) : cₓ[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
-x2g = collect(cₓ[2] + lbc : (ubc-lbc)/(res-1) : cₓ[2] + ubc) .+ ϵ; lg2 = length(x2g);
+## Grid Definition (can be done automatically)
+ϵ = 0.5e-7; res = 30; lbc, ubc = -3, 3; cg = zero(cₓ);
+x1g = collect(cg[1] + lbc : (ubc-lbc)/(res-1) : cg[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
+x2g = collect(cg[2] + lbc : (ubc-lbc)/(res-1) : cg[2] + ubc) .+ ϵ; lg2 = length(x2g);
 Xg = hcat(collect.(Iterators.product(x1g, x2g))...);
 
 ## Hopf Coordinate-Descent Parameters (optional)
@@ -156,10 +156,10 @@ TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
 1-element Vector{Plots.Plot{Plots.PlotlyJSBackend}}:
  Plot{Plots.PlotlyJSBackend() n=5}
 ```
-Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions,
+Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions (target in black, t solutions in red -> blue),
 
 <p align="center">
-  <img src="./Koopman-Hopf/Figures/LTV_demo.png" width="800">
+  <img src="./Koopman-Hopf/Figures/LTV_demo2.png" width="800">
 </p>
 
 See the /Examples for more.
