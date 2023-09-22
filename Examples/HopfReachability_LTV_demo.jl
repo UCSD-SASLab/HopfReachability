@@ -30,9 +30,9 @@ system_t = (At, max_u * B₁, max_d * B₂, Q₁, Q₂, c₁, c₂)
 system_f = (Af, s -> max_u * B₁f(s), s -> max_d * B₂f(s), Q₁, Q₂, c₁, c₂)
 
 ## Target: J(x) = 0 is the boundary of the target
-Qₓ = diagm([4; 1])
-cₓ = zero(A[:,1])
-r = 1.0
+Qₓ = diagm([1; 1])
+cₓ = [-1.; 1.]
+r = 1.0/2
 J(x::Vector, Qₓ, cₓ) = ((x - cₓ)' * inv(Qₓ) * (x - cₓ))/2 - 0.5 * r^2 #don't need yet
 Jˢ(v::Vector, Qₓ, cₓ) = (v' * Qₓ * v)/2 + cₓ'v + 0.5 * r^2
 J(x::Matrix, Qₓ, cₓ) = diag((x .- cₓ)' * inv(Qₓ) * (x .- cₓ))/2 .- 0.5 * r^2
@@ -40,9 +40,9 @@ Jˢ(v::Matrix, Qₓ, cₓ) = diag(v' * Qₓ * v)/2 + (cₓ'v)' .+ 0.5 * r^2 #don
 target = (J, Jˢ, (Qₓ, cₓ))
 
 ## Automatic Grid Parameters (can also define matrix of points Xg)
-ϵ = 0.5e-7; res = 20; lbc, ubc = -3., 3.;
-x1g = collect(cₓ[1] + lbc : (ubc-lbc)/(res-1) : cₓ[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
-x2g = collect(cₓ[2] + lbc : (ubc-lbc)/(res-1) : cₓ[2] + ubc) .+ ϵ; lg2 = length(x2g);
+ϵ = 0.5e-7; res = 30; lbc, ubc = -3, 3; cg = zero(cₓ);
+x1g = collect(cg[1] + lbc : (ubc-lbc)/(res-1) : cg[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
+x2g = collect(cg[2] + lbc : (ubc-lbc)/(res-1) : cg[2] + ubc) .+ ϵ; lg2 = length(x2g);
 Xg = hcat(collect.(Iterators.product(x1g, x2g))...);
 
 ## Hopf Coordinate-Descent Parameters (optional)
@@ -66,9 +66,9 @@ solution_t, run_stats = Hopf_BRS(system_t, target, T; th, Xg, inputshape, opt_p=
 solution_f, run_stats = Hopf_BRS(system_f, target, T; th, Xg, inputshape, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
 # plot_scatter = plot_BRS(T, solution...; A, ϵs=1e-1, interpolate=false, value_fn=false, alpha=0.1)
-plot_contour = plot_BRS(T, solution...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A - Hopf")
+plot_contour = plot_BRS(T, solution...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A - Hopf");
 plot_contour_t = plot_BRS(T, solution_t...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="Aₜ - Hopf")
-plot_contour_f = plot_BRS(T, solution_f...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - Hopf")
+plot_contour_f = plot_BRS(T, solution_f...; ϵc=1e-3, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - Hopf");
 
 ### Get the "True" BRS from hj_reachability.py
 
@@ -133,8 +133,8 @@ hj = pyimport("hj_reachability")
     end
 end
 
-DP_grid = hj.Grid.from_lattice_parameters_and_boundary_conditions(hj.sets.Box(np.array([cₓ[1] + lbc, cₓ[2] + lbc]),
-                                                                              np.array([cₓ[1] + ubc, cₓ[2] + ubc])),
+DP_grid = hj.Grid.from_lattice_parameters_and_boundary_conditions(hj.sets.Box(np.array([cg[1] + lbc, cg[2] + lbc]),
+                                                                              np.array([cg[1] + ubc, cg[2] + ubc])),
                                                                              (lg1, lg2)) #lg has to be even
 
 DP_values = (jnp.array(np.sum(np.multiply(inv.(diag(Qₓ)), np.square(np.subtract(DP_grid.states, np.array(cₓ)))), axis=-1)) - r^2) * 0.5
@@ -168,9 +168,9 @@ for (tsi, ts) in enumerate(collect(th:th:T[end]))
 end
 
 Xgs = [Xg for i=1:length(T)+1] # for plotting
-BRS_plots = plot_BRS(T, Xgs, ϕXT_DP; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A - DP")
-BRS_plot_t = plot_BRS(T, Xgs, ϕXT_DP_t; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="Aₜ - DP")
-BRS_plots_f = plot_BRS(T, Xgs, ϕXT_DP_f; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - DP")
+BRS_plots = plot_BRS(T, Xgs, ϕXT_DP; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A - DP");
+BRS_plot_t = plot_BRS(T, Xgs, ϕXT_DP_t; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="Aₜ - DP");
+BRS_plots_f = plot_BRS(T, Xgs, ϕXT_DP_f; ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5, title="A(t) - DP");
 
 fig = plot(plot_contour[1], plot_contour_t[1], plot_contour_f[1], 
     BRS_plots[1], BRS_plot_t[1], BRS_plots_f[1], layout=(2,3), size=(800,500))
