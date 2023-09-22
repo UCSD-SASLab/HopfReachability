@@ -76,9 +76,9 @@ T = collect(Th : Th : Tf)
 ## Initialize (2D Example)
 max_u, max_d = 1.0, 0.5
 
-A = - [0. float(pi); -float(pi) 0.]
-At = [if s < 11; A; else; -A; end; for s=1:Int(T[end]/th)]
-Af(s) = - 2s * [0. float(pi); -float(pi) 0.]
+A = -[0. float(pi); -float(pi) 0.]
+At = [if s <= T[end]/2th; -A; else; A; end; for s=1:Int(T[end]/th)]
+Af(s) = 2 * (Tf - s) * A
 
 B₁, B₂ = [1. 0; 0 1], [1. 0; 0 1];
 B₁t, B₂t = [[1. 0; 0 1] for s=1:Int(T[end]/th)], [[1. 0; 0 1] for s=1:Int(T[end]/th)];
