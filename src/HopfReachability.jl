@@ -1,7 +1,11 @@
 module HopfReachability
 
-using LinearAlgebra, StatsBase, ScatteredInterpolation, DifferentialEquations
-using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS, LaTeXStrings
+using LinearAlgebra, StatsBase, DifferentialEquations
+using TickTock, Suppressor 
+# using LaTeXStrings
+# using Plots 
+# using ScatteredInterpolation, ImageFiltering
+# using PlotlyJS
 # plotlyjs()
 
 ##################################################################################################
@@ -32,15 +36,12 @@ function Hopf_BRS(system, target, T;
     if opt_method == Hopf_cd
         # Faster : (0.01, 2, ϵ, 100, 5, 10, 400)
         opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p
-        ρ, ρ2 = 1, 1
         admm = false
     elseif opt_method == Hopf_admm
         opt_p = isnothing(opt_p) ? (1e-1, 1e-2, 1e-5, 100) : opt_p 
-        ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1:2]
         admm = true
     elseif opt_method == Hopf_admm_cd
         opt_p = isnothing(opt_p) ? ((1e-0, 1e-0, 1e-5, 3), (0.01, 2, ϵ, 50, 1, 3, 125), 1, 1, 10) : opt_p 
-        ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1][1:2]
         admm = true
     end
 
@@ -56,7 +57,7 @@ function Hopf_BRS(system, target, T;
         pr_B₁ = typeof(system[2]) <: Function ? "B₁(t)" : (length(size(system[2])) == 1 ? "B₁[t]" : "B₁")
         pr_B₂ = typeof(system[3]) <: Function ? "B₂(t)" : (length(size(system[3])) == 1 ? "B₂[t]" : "B₂")
         pr_affine = length(system) >= 8 ? (typeof(system[8]) <: Function ? "+ c(t) " : (length(size(system[8][1])) == 0 ? "+ c " : "+ c[t] ")) : ""
-        pr_E = length(system) == 9 ? (typeof(system[9]) <: Function ? "Eδ(t)" : (length(size(system[9])) == 2 ? "Eδ" : "Eδ[t]")) : ""
+        pr_E = length(system) == 9 ? (typeof(system[9]) <: Function ? "Eδ(t)" : (length(size(system[9])) == 1 ? "Eδ[t]" : "Eδ")) : ""
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
@@ -82,7 +83,7 @@ function Hopf_BRS(system, target, T;
 
     ## Precomputation
     if printing; println("\nPrecomputation, ..."); end
-    Hmats, Φ = preH(system, target, t; admm, ρ, ρ2, Φ)
+    Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
     nx = size(Hmats[1])[2]
 
     ## Grid Set Up
@@ -247,15 +248,12 @@ function Hopf_minT(system, target, x;
 
     if opt_method == Hopf_cd
         opt_p = isnothing(opt_p) ? (0.01, 5, 1e-5, 500, 20, 20, 2000) : opt_p
-        ρ, ρ2 = 1, 1
         admm = false
     elseif opt_method == Hopf_admm
         opt_p = isnothing(opt_p) ? (1e-1, 1e-2, 1e-5, 100) : opt_p 
-        ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1:2]
         admm = true
     elseif opt_method == Hopf_admm_cd
         opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 100), (0.01, 5, 1e-5, 500, 1, 4, 2000), 1, 1, 10) : opt_p 
-        ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1][1:2]
         admm = true
     end
 
@@ -268,8 +266,8 @@ function Hopf_minT(system, target, x;
         pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
         pr_B₁ = typeof(system[2]) <: Function ? "B₁(t)" : (length(size(system[2])) == 1 ? "B₁[t]" : "B₁")
         pr_B₂ = typeof(system[3]) <: Function ? "B₂(t)" : (length(size(system[3])) == 1 ? "B₂[t]" : "B₂")
-        pr_affine = length(system) == 8 ? (typeof(system[8]) <: Function ? " + c(t)" : (length(size(system[8][1])) == 0 ? "+ c" : "+ c[t]")) : ""
-        pr_E = length(system) == 9 ? (typeof(system[9]) <: Function ? "Eδ(t)" : (length(size(system[9])) == 2 ? "Eδ" : "Eδ[t]")) : ""
+        pr_affine = length(system) >= 8 ? (typeof(system[8]) <: Function ? "+ c(t) " : (length(size(system[8][1])) == 0 ? "+ c " : "+ c[t] ")) : ""
+        pr_E = length(system) == 9 ? (typeof(system[9]) <: Function ? "Eδ(t)" : (length(size(system[9])) == 1 ? "Eδ[t]" : "Eδ")) : ""
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
@@ -277,14 +275,14 @@ function Hopf_minT(system, target, x;
         pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
         
         println("\nGiven,")
-        println("\n  ẋ = $pr_A x + $pr_B₁ u + $pr_B₂ d $pr_affine $pr_error")
+        println("\n  ẋ = $pr_A x + $pr_B₁ u + $pr_B₂ d $pr_affine$pr_error")
         println("\n  s.t. ")
         println("\n  $pr_u_bds, $pr_d_bds $pr_error_bds")
         println("\n  for x ∈ ℝ^{$pr_x_dim}, u ∈ ℝ^{$pr_u_dim}, d ∈ ℝ^{$pr_d_dim} $pr_error_dim")
+
+        println("\nSolving Optimal Control at x=$x,")
     end
     system = length(system) == 7 && depth_counter == 0 ? (system..., zeros(size(system[1],1))) : system
-
-    if printing && depth_counter == 0; println("\nSolving Optimal Control at x=$x,"); end
 
     M = system[1]
     J, Jˢ, Jp = target
@@ -297,10 +295,11 @@ function Hopf_minT(system, target, x;
     v_init = isnothing(v_init_) ? nothing : copy(v_init_)
 
     ## Precompute entire Φ for speed
-    Φ = isnothing(Φ) ? (!(typeof(M) <: Function) ? s->exp(s*M) : solveΦ(M, collect(th:th:maxT))[2]) : Φ
+    # Φ = isnothing(Φ) ? (!(typeof(M) <: Function) ? s->exp(s*M) : solveΦ(M, collect(th:th:maxT))[2]; printing) : Φ
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, collect(th:th:maxT); printing) : s->exp(s*M)) : Φ;
 
     ## Precomputing some of H for efficiency (#TODO check its faster than solving (0., maxT) once)
-    Hmats, _ = preH(system, target, t; ρ, ρ2, admm, Φ)
+    Hmats, _ = preH(system, target, t; opt_p, admm, Φ, printing)
 
     ## Loop Over Time Frames until ϕ(z, T) > 0
     Thi = 0; Tˢ = t[end]
@@ -326,22 +325,34 @@ function Hopf_minT(system, target, x;
         ## Check if Tˢ yields valid ϕ
         if ϕ <= 0;
             if refines > 0
-                if printing; println("At $Tˢ, ϕ<0 with (th,Th)=($th,$Th), but refining with ($(th*refine),$(Th*refine)),"); end
+                if printing; println("At $Tˢ, ϕ=$(round(ϕ, digits=2)) < 0 with (th,Th)=($th,$Th), but refining with ($(th*refine),$(Th*refine)),"); end
                 
                 uˢ, dˢ, Tˢ, ϕ, dϕdz = Hopf_minT(system, target, x; 
-                                    time_p=(th*refine, Th*refine, Tˢ+Th), # refine t params
+                                    # time_p=(th*refine, Th*refine, Tˢ+Th), # refine t params maxT
+                                    time_p=(th*refine, Th*refine, Tˢ), # refine t params maxT
                                     T_init = Thi == 0 ? T_init : (Tˢ-Th), # initialize 1 Th step back unless first step
                                     refines=refines-1, depth_counter=depth_counter+1,
                                     v_init_ = warm ? copy(dϕdz) : nothing, Φ,
                                     refine, printing, opt_method, opt_p, preH, intH, HJoc, tol, p2, game, moving_target, warm);
 
+                # t = t_refined # need to do this in case refinement time goes past ϕ<0 time (i.e. refinements showed ϕ>0 actually)
+
             elseif printing; 
                 println("\nTˢ ∈ [$(Tˢ-Th), $Tˢ], overestimating with Tˢ=$Tˢ"); 
             end
-            break; 
+
+            if ϕ <= 0; break; end # need to do this in case refinement contradicts trigger
         end
-        prgame = game == "reach" ? "reachable" : "avoidable"  
-        if Tˢ > maxT && depth_counter == 0; println("!!! Not $prgame under max time of $Tˢ !!!"); break; end    
+
+        if Tˢ ≥ maxT; 
+            if depth_counter == 0
+                if printing && game == "reach"; println("!!! Not reachable under max time of $Tˢ !!!"); end
+                if printing && game == "avoid"; println("Avoidable until max time of $Tˢ"); end
+            else
+                if printing; println("False trigger: refinement showed ϕ=$(round(ϕ, digits=2))>0, returning to original step size..."); end
+            end
+            break; 
+        end    
 
         ## Update the t, to increase Tˢ
         t_ext = collect(Tˢ + th : th : Tˢ + Th + th/2); push!(t, t_ext...)
@@ -349,16 +360,19 @@ function Hopf_minT(system, target, x;
 
         ## Parsimoniously amending Hdata for increased final time (#TODO check its faster than solving (0., maxT) once)
         F_init = admm ? Hmats[end] : nothing
-        Hmats_ext, _ = preH(system, target, t_ext; ρ, ρ2, admm, F_init, Φ)
-        Rt_ext, R2t_ext = Hmats_ext[1], Hmats_ext[2]
-        Rt, R2t  = vcat(Hmats[1], Rt_ext), vcat(Hmats[2], R2t_ext)
-        Hmats = (Rt, R2t, Hmats[3:end-1]..., Hmats_ext[end])
-
+        Hmats_ext, _ = preH(system, target, t_ext; opt_p, admm, F_init, Φ, printing)
+        Rt_ext, R2t_ext = vcat(Hmats[1], Hmats_ext[1]), vcat(Hmats[2], Hmats_ext[2]) # extend R1t, R2t or QR1t, QR2t
+        if preH != preH_error; 
+            Hmats = (Rt_ext, R2t_ext, Hmats[3:end-1]..., Hmats_ext[end])
+        else
+            cRt_ext, δR2t_ext = vcat(Hmats[3], Hmats_ext[3]), vcat(Hmats[4], Hmats_ext[4]); # extend cRt, δRt
+            Hmats = (Rt_ext, R2t_ext, cRt_ext, δR2t_ext, Hmats_ext[end])
+        end 
     end
 
     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
     if depth_counter == 0
-        uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2, game, Φ)
+        uˢ, dˢ = HJoc(system, dϕdz, t, Tˢ; p2, game, Φ, printing)
 
         totaltime = tok()
         if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
@@ -386,7 +400,6 @@ end
 #         admm = true
 #     elseif opt_method == Hopf_admm_cd
 #         opt_p = isnothing(opt_p) ? ((1e-1, 1e-2, 1e-5, 100), (0.01, 5, ϵ, 500, 1, 4), 1, 1, 10) : opt_p 
-#         ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : opt_p[1][1:2]
 #         admm = true
 #     end
 
@@ -399,7 +412,7 @@ end
 #     v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
 
 #     ## Precomputing some of H for efficiency
-#     Hmats = preH(system, target, t; ρ, ρ2, admm)
+#     Hmats = preH(system, target, t; opt_p, admm, printing)
 
 #     ## Loop over Time Frames until ϕ(z, T) > 0
 #     c = 0; break_flag = false;
@@ -445,7 +458,7 @@ end
 #     end
 
 #     ## Compute Optimal Control (dH/dp(dϕdz, Tˢ) = exp(-Tˢ * M)Cuˢ + exp(-Tˢ * M)C2dˢ)
-#     uˢ, dˢ = HJoc(system, dϕdz, Tˢ; p2, game)
+#     uˢ, dˢ = HJoc(system, dϕdz, t, Tˢ; p2, game, printing)
 
 #     totaltime = tok()
 #     if printing; println("  ϕ($Tˢ) = $ϕ \n ∇ϕ($Tˢ) = $dϕdz \n uˢ($Tˢ) = $uˢ \n dˢ($Tˢ) = $dˢ"); end
@@ -850,12 +863,12 @@ function mat_spiral(rows, cols)
 end
 
 ## Solve the Fundamental i.e. Flow-map for a Time-Varying Linear System
-function solveΦ(A, t; alg=Tsit5())
-    print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); 
+function solveΦ(A, t; alg=Tsit5(), printing=false)
+    if printing; print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); end
     nx = typeof(A) <: Function ? size(A(t[1]))[1] : size(A[1])[1];
     f = typeof(A) <: Function ? (U,p,s) -> U * A(t[end] - s) : (U,p,s) -> U * A[end:-1:1][findfirst(x->x<=0, (-t .+ s))]
     sol = solve(ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg);
-    print("LTV System inputted, integrating Φ(t)... Success!\n");
+    if printing; print("LTV System inputted, integrating Φ(t)... Success!\n"); end
     return sol
 end
 
@@ -891,14 +904,15 @@ function intH_ball(system, Hdata, v; p2=true, game="reach",)
 end
 
 ## Hamiltonian Precomputation
-function preH_ball(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, Φ=nothing)
+function preH_ball(system, target, t; opt_p=nothing, admm=false, F_init=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c = system
+    ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : (typeof(opt_p[1]) <: Number ? opt_p[1:2] : opt_p[1][1:2])
     J, Jˢ, Jp = target
     th = t[2]
 
     ## Solve Φ
-    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t) : s->exp(s*M)) : Φ; Φt = Φ.(t)
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t; printing) : s->exp(s*M)) : Φ; Φt = Φ.(t)
     nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
 
     ## Transformation Mats R := (exp(-(T-t)M)C)' over t
@@ -932,17 +946,17 @@ function preH_ball(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, �
 end
 
 ## Optimal HJB Control
-function HJoc_ball(system, dϕdz, T; p2=true, game="reach", Hdata=nothing, Φ=nothing)
+function HJoc_ball(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c = system
     nu, nd = size(Q)[1], size(Q2)[1]
     sgn_p1, sgn_p2 = game == "reach" ? (1, -1) : (-1, 1)
     
     ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
-    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
-    CT  = typeof(C)  <: Function ? C(t[end] - T)  : C
-    C2T = typeof(C2) <: Function ? C2(t[end] - T) : C2
-    R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
+    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[s]; printing) : s->exp(s*M)) : Φ; Φs = Φ(s)
+    Cs  = typeof(C)  <: Function ? C(t[end] - s)  : C
+    C2s = typeof(C2) <: Function ? C2(t[end] - s) : C2
+    R, R2 = -(Φs * Cs)', -(Φs * C2s)'
 
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
@@ -978,14 +992,15 @@ function intH_box(system, Hdata, v; p2=true, game="reach")
 end
 
 ## Hamiltonian Precomputation
-function preH_box(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, Φ=nothing)
+function preH_box(system, target, t; opt_p=nothing, admm=false, F_init=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c = system
+    ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : (typeof(opt_p[1]) <: Number ? opt_p[1:2] : opt_p[1][1:2])
     J, Jˢ, Jp = target
     th = t[2]
 
     ## Solve Φ
-    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t) : s->exp(s*M)) : Φ; Φt = Φ.(t)
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t; printing) : s->exp(s*M)) : Φ; Φt = Φ.(t)
     nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
 
     ## Precomputing ADMM matrix
@@ -1007,17 +1022,17 @@ function preH_box(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, Φ
 end
 
 ## Optimal HJB Control # todo: check graphically
-function HJoc_box(system, dϕdz, T; p2=true, game="reach", Hdata=nothing, Φ=nothing)
+function HJoc_box(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c = system
     nu, nd = size(Q)[1], size(Q2)[1]
     sgn_p1, sgn_p2 = game == "reach" ? (1, -1) : (-1, 1)
 
     ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
-    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
-    CT  = typeof(C)  <: Function ? C(t[end] - T)  : C
-    C2T = typeof(C2) <: Function ? C2(t[end] - T) : C2
-    R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
+    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[s]; printing) : s->exp(s*M)) : Φ; Φs = Φ(s)
+    Cs  = typeof(C)  <: Function ? C(t[end] - s)  : C
+    C2s = typeof(C2) <: Function ? C2(t[end] - s) : C2
+    R, R2 = -(Φs * Cs)', -(Φs * C2s)'
 
     QR, QR2 = Q * R, Q2 * R2
 
@@ -1033,14 +1048,15 @@ end
 
 ### Standard Hamiltonian precomputation fn
 
-function preH_std(system, target, t; ρ=1, ρ2=1, admm=false, Φ=nothing)
+function preH_std(system, target, t; opt_p=nothing, admm=false, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c = system
+    ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : (typeof(opt_p[1]) <: Number ? opt_p[1:2] : opt_p[1][1:2])
     J, Jˢ, Jp = target
     th = t[2]
 
     ## Solve Φ
-    Φ = isnothing(Φ) ? (!(typeof(M) <: Function) || length(size(M)) == 2 ? s->exp(s*M) : solveΦ(M, t)) : Φ; Φt = Φ.(t) 
+    Φ = isnothing(Φ) ? (!(typeof(M) <: Function) || length(size(M)) == 2 ? s->exp(s*M) : solveΦ(M, t; printing)) : Φ; Φt = Φ.(t) 
     nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
 
     ## Precomputing ADMM matrix
@@ -1089,14 +1105,15 @@ function intH_error(system, Hdata, v; p2=true, game="reach")
 end
 
 ## Hamiltonian Precomputation
-function preH_error(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, Φ=nothing)
+function preH_error(system, target, t; opt_p=nothing, admm=false, F_init=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c, Eδ = system
+    ρ, ρ2 = isnothing(opt_p) ? (1e-1, 1e-2) : (typeof(opt_p[1]) <: Number ? opt_p[1:2] : opt_p[1][1:2])
     J, Jˢ, Jp = target
     th = t[2]
 
     ## Solve Φ
-    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t) : s->exp(s*M)) : Φ; Φt = Φ.(t)
+    Φ = isnothing(Φ) ? (typeof(M) <: Function || length(size(M)) == 1 ? solveΦ(M, t; printing) : s->exp(s*M)) : Φ; Φt = Φ.(t)
     nx, nu, nd = size(Φt[1])[1], size(Q)[1], size(Q2)[1]
 
     ## Precomputing ADMM matrix
@@ -1126,20 +1143,20 @@ function preH_error(system, target, t; ρ=1, ρ2=1, admm=false, F_init=nothing, 
 end
 
 ## Optimal HJB Control # todo: check graphically
-function HJoc_error(system, dϕdz, T; p2=true, game="reach", Hdata=nothing, Φ=nothing)
+function HJoc_error(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ=nothing, printing=false)
 
     M, C, C2, Q, a, Q2, a2, c, Eδ = system
     nu, nd = size(Q)[1], size(Q2)[1]
     sgn_p1, sgn_p2 = game == "reach" ? (1, -1) : (-1, 1)
 
     ## Handle Time-Varying Systems (constant or fn(time), array nonsensible)
-    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[T]) : s->exp(s*M)) : Φ; ΦT = Φ(T)
-    CT  = typeof(C)  <: Function ? C(t[end] - T)  : C
-    C2T = typeof(C2) <: Function ? C2(t[end] - T) : C2
-    # cT = typeof(c) <: Function ? c(t[end] - T) : c
-    EδT = typeof(Eδ) <: Function ? Eδ(t[end] - T) : C2
+    Φ = isnothing(Φ) ? (typeof(M) <: Function ? solveΦ(M,[s]; printing) : s->exp(s*M)) : Φ; Φs = Φ(s)
+    Cs  = typeof(C)  <: Function ? C(t[end] - s)  : C
+    C2s = typeof(C2) <: Function ? C2(t[end] - s) : C2
+    # cs = typeof(c) <: Function ? c(t[end] - s) : c # unneeded for oc
+    Eδs = typeof(Eδ) <: Function ? Eδ(t[end] - s) : C2
 
-    R, R2 = -(ΦT * CT)', -(ΦT * C2T)'
+    R, R2 = -(Φs * Cs)', -(Φs * C2s)'
 
     QR, QR2 = Q * R, Q2 * R2
 
@@ -1148,7 +1165,7 @@ function HJoc_error(system, dϕdz, T; p2=true, game="reach", Hdata=nothing, Φ=n
 
     uˢ = Q  != zero(Q)  ? sgn_p1 * Q * sign.(QR * dϕdz) : zeros(nu)
     dˢ = Q2 != zero(Q2) && p2 ? sgn_p2 * Q2 * sign.(QR2 * dϕdz) : zeros(nd)
-    δˢ = sgn_p2 * EδT * sign.((-ΦT * EδT)' * dϕdz)
+    δˢ = sgn_p2 * Eδs * sign.((-Φs * Eδs)' * dϕdz)
 
     return uˢ, dˢ, δˢ
 end
