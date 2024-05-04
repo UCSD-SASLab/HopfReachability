@@ -1,58 +1,57 @@
 # HopfReachability.jl
-Julia code for solving Hamilton-Jacobi reachability and optimal control of 2-player differential games via optimization of the Hopf cost. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality.
+Julia code for solving Hamilton-Jacobi optimal control and reachability of differential games via optimization of the Hopf formula. This method allows for solving the value function in a space-parallelizeable fashion that avoids the curse of dimensionality (i.e. one can query the value at any point in space and time alone).
 
-Note, in comparison with differential inclusions/zonotoping methods ([`ReachabilityAnalysis.jl`](https://github.com/JuliaReach/ReachabilityAnalysis.jl)), which overapproximate all dynamically feasible trajectories, Hamilton-Jacobi Reachability is based on assuming a differential game and yields the reachable set for an optimal controller despite any action of the disturbance. See [`hj_reachability.py`](https://github.com/StanfordASL/hj_reachability) or [`helperOC.m`](https://github.com/HJReachability/helperOC) for dynamic programming (dimension-sensitive) solutions to this problem.
+In comparison with differential inclusions ([`ReachabilityAnalysis.jl`](https://github.com/JuliaReach/ReachabilityAnalysis.jl)), which overapproximate all dynamically feasible trajectories, Hamilton-Jacobi Reachability is based on assuming a differential game and yields the reachable set for an optimal controller despite any action of the antagonistic disturbance. See [`hj_reachability.py`](https://github.com/StanfordASL/hj_reachability) or [`helperOC.m`](https://github.com/HJReachability/helperOC) for dynamic programming (dimension-sensitive) solutions to this problem.
 
-### Associated Publications
 
-[Algorithm for Overcoming the Curse of Dimensionality for State-dependent Hamilton-Jacobi equations](https://arxiv.org/pdf/1704.02524.pdf)
-
-[Algorithms for Overcoming the Curse of Dimensionality for Certain Hamilton-Jacobi Equations Arising in Control Theory and Elsewhere](https://arxiv.org/pdf/1605.01799.pdf)
-
-[Time-Optimal Collaborative Guidance Using the Generalized Hopf Formula](https://arxiv.org/pdf/1709.06590.pdf)
-
-[Koopman-Hopf Hamilton-Jacobi Reachability and Control](https://arxiv.org/abs/2303.11590)
-
-## 
-
-Currently, this solution and algorithm are validated for,
-- Linear Time-Varying Dynamics
-- Convex Games (when non-convex, Hopf value is lower bound to true value)
-- Differential Games with unique Nash Equilibria (min max = max min)
-
-Beware, if the Hamiltonian is nonconvex, which occurs when the disturbance set exceeds the control set, then the Hopf objective is nonconvex and convergence to the global optimum is not guaranteed (nor agreement between minimax and viscosity solutions). In these settings, we reinitialize the optimization multiple times and in practice, we find that proximal methods converge to the global optimum within one or two guesses. Note, an erroneous value does not affect the solution at any other point (unless warm-starting).
 
 Note, **this package and its algorithms are in the early stages of development**. The authors (Will Sharpless, Yat Tin Chow, Sylvia Herbert) welcome any criticism or discovery of bugs. If you are interested in helping, we have many ideas to advance this package and look forward to collaboration.
 
 ## Problem Formulation
 
-Given a linear, time-varying system,
+Consider a control-affine system, such as
 ```math
-\dot{x} = A(t)x + B_1(t) u + B_2(t) d
+\dot{x} = A(t)x + B_1(t) u + B_2(t) d \qquad \text{or} \qquad \dot{x} = f_x(x, t) + h_1(x, t) u + h_2(x, t) d,
 ```
-where control and disturbance are constrained to convex sets (ellipse/ball and box predefined, but any convex constraint allowed), e.g. 
+in which control and disturbance are constrained to compact, convex sets, e.g., 
 ```math
-u \in \big\{ u \in \mathbb{R}^{n_u} \:\: | \:\: (u-c_u (t))^T Q^{-1}_u (t) (u-c_u (t)) \leq 1 \big\} \quad \& \quad d \in \big\{d \in \mathbb{R}^{n_d} \:\: | \:\: (d-c_d (t))^T Q^{-1}_d (t) (d-c_d (t)) \leq 1 \big\}
+u \in \big\{ u \in \mathbb{R}^{n_u} \:\: | \:\: (u-c_u (t))^T Q^{-1}_u (t) (u-c_u (t)) \leq 1 \big\} \quad \& \quad d \in \big\{d \in \mathbb{R}^{n_d} \:\: | \:\: (d-c_d (t))^T Q^{-1}_d (t) (d-c_d (t)) \leq 1 \big\}.
 ```
-we will compute the Backwards Reachable Set for time T for which all points can be driven to the target with the optimal control despite the worst disturbance.
+This package allows the computation of the Backwards Reachable Set $\mathcal{R}$ for initial time $t_i$ (via `Hopf_BRS`) defined by
+```math
+\mathcal{R}(\mathcal{T}, t_i) \triangleq \{ x \mid \forall d(\cdot) \in \mathcal{D}, \exists u^*(\cdot) \in \mathcal{U} \quad \text{s.t.} \quad \xi(t_i) = x, \xi(t_f) \in \mathcal{T} \}
+```
+where $\xi$ is the system trajectory starting and $\mathcal{T}$ is a user-defined target (to reach or avoid). Informally, this is the set of states that can be driven to the target despite any disturbance in $\mathcal{D}$. Additionally, this package can rapidly compute the optimal control policy $u^*(\cdot)$ to achieve this (either via `Hopf_minT` or `Hopf_BRS`). 
 
-The target set is defined by an initial Value function $J(x)$ for a convex target set $\mathcal{T}$ such that,
+The target set is defined by an initial Value function $J(x)$ for a set $\mathcal{T}$ such that,
 ```math
-\begin{cases}
-J(x) < 0 \:\: \text{ for } \:\:x \in \mathcal{T} \setminus \partial\mathcal{T} \\
-J(x) = 0 \:\: \text{ for }\:\:x \in \partial\mathcal{T} \\
+J(x) \triangleq \begin{cases}
+J(x) \le 0 \:\: \text{ for } \:\:x \in \mathcal{T} \\
 J(x) > 0 \:\: \text{ for } \:\:x \notin \mathcal{T}
 \end{cases}
 ```
-where $\partial \mathcal{T}$ is the boundary of $\mathcal{T}$. E.g. 
-
+E.g. An elliptical target yields,
 ```math
-\mathcal{T} := \big\{x \in \mathbb{R}^{n_x}  \:\: | \:\: (x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) \le 1 \big\} \rightarrow J(x) = \frac{1}{2} \big((x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) - 1 \big)
+\mathcal{T} \triangleq \big\{x \in \mathbb{R}^{n_x}  \:\: | \:\: (x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) \le 1 \big\} \rightarrow J(x) = \frac{1}{2} \big((x - c_\mathcal{T})^T Q^{-1}_\mathcal{T} (x - c_\mathcal{T}) - 1 \big)
 ```
+
+## Limitations
+
+Alone, the Hopf formula is only guaranteed to yield the correct value [1] when the system is linear & the target is convex. For nonlinear systems, safe linearization methods [2] must be employed (`cons_lins_utls.jl`) and these can be further improved by safe lifting methods [3]. Beware, when the Hamiltonian is non-convex, the Hopf formula gives the correct value, however, the optimization problem becomes non-convex and special solvers guaranteed to solve this problem (e.g. ADMM) must be employed. 
+
+### Associated Publications
+
+1. [Algorithm for Overcoming the Curse of Dimensionality for State-dependent Hamilton-Jacobi equations](https://arxiv.org/pdf/1704.02524.pdf)
+
+2. [Conservative Linear Envelopes for Nonlinear, High-Dimensional, Hamilton-Jacobi Reachability](https://arxiv.org/abs/2403.14184)
+
+3. [State-Augmented Linear Games with Antagonistic Error for High-Dimensional, Nonlinear Hamilton-Jacobi Reachability](https://arxiv.org/abs/2403.16982)
+
+4. [Koopman-Hopf Hamilton-Jacobi Reachability and Control](https://arxiv.org/abs/2303.11590)
 
 ## Code Structure
 
-- `Hopf_BRS`: fed a system, target and T, (optionally grid and optimization parameters) and makes a grid and performs optimization for points in the grid near the boundary of the target by calling,
+- `Hopf_BRS`: fed a system, target and time array (optionally grid and optimization parameters) and makes a grid and performs optimization for points in the grid near the boundary of the target by calling,
 - `Hopf_cd`/`Hopf_admm`: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
 - `Hopf`: evaluates the value of the Hopf formula for a given value of x and v.
 - `Hopf_minT`: finds the minimum time such that a given state is reachable and returns the optimal control
@@ -163,18 +162,4 @@ Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (se
 </p>
 
 See the /Examples for more.
-
-## Future Work
-
-We will expand this toolbox to handle problems that include, 
-- nonlinear systems (which require generalized Hopf formula which is harder to optimize and lacks guarantees)
-- error analysis
-- more types of built-in target and constraint geometries
-
-On the solver side, we will build the ability to 
-- refine the value function based on Lipschitz bounds
-- utilize the other optimization methods (PDHG)
-- autodiff the gradient for convex cases
-- parallelize the grid solving
-- readily call this toolbox from Python and Matlab
 
