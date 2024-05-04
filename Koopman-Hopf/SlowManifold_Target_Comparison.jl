@@ -6,8 +6,8 @@ using LinearAlgebra, StatsBase, ScatteredInterpolation
 using Plots, PlotlyJS, LaTeXStrings, JLD
 plotlyjs() 
 
-include("/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf
+include(pwd() * "/src/HopfReachability.jl");
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_BRS, Hopf
 
 using LSHFunctions: jaccard
 using Polyhedra
@@ -79,8 +79,6 @@ opt_p_admm_cd = (opt_p_admm, opt_p_cd, ρ_grid_vals, ρ_grid_vals, hybrid_runs)
 ## Run the solver
 solution, run_stats = Hopf_BRS(system, target, T;   th, grid_p,
                                                     opt_method = Hopf_cd,
-                                                    intH = intH_ytc17,
-                                                    preH = preH_ytc17,
                                                     opt_p = opt_p_cd,
                                                     warm = true,
                                                     printing = true);
@@ -132,11 +130,9 @@ plot_contour = plot_BRS(T, solution...; M, ϵc=0.001, interpolate=true, value_fn
 
 #      solution, run_stats = Hopf_BRS(system, target, T;  
 #                                                        opt_method = Hopf_cd, 
-#                                                        intH = intH_ytc17,
-#                                                        preH=preH_ytc17,
 #                                                        th,
 #                                                        grid_p,
-#                                                     #    opt_p = opt_p_admm,
+#                                                        opt_p = opt_p_admm,
 #                                                        warm=true,
 #                                                        check_all=true,
 #                                                        printing=true);
@@ -262,7 +258,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 # solution_ball, run_stats = Hopf_BRS(system, target_ball, T;
 #                                                 Xg=Gg, th,
 #                                                 opt_method = Hopf_admm_cd,
-#                                                 preH = preH_ytc17, intH = intH_ytc17,
 #                                                 opt_p = opt_p_admm_cd,
 #                                                 warm = true,
 #                                                 check_all = true,
@@ -271,7 +266,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 # solution_cyle, run_stats = Hopf_BRS(system, target_cyle, T;
 #                                                 Xg=Gg, th,
 #                                                 opt_method = Hopf_admm_cd,
-#                                                 preH = preH_ytc17, intH = intH_ytc17,
 #                                                 opt_p = opt_p_admm_cd,
 #                                                 warm = true,
 #                                                 check_all = true,
@@ -280,7 +274,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 # solution_tgte, run_stats = Hopf_BRS(system, target_tgte, T;
 #                                                 Xg=Gg, th,
 #                                                 opt_method = Hopf_admm_cd,
-#                                                 preH = preH_ytc17, intH = intH_ytc17,
 #                                                 opt_p = opt_p_admm_cd,
 #                                                 warm = true,
 #                                                 check_all = true,
@@ -289,7 +282,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 # solution_oute, run_stats = Hopf_BRS(system, target_oute, T;
 #                                                 Xg=Gg, th,
 #                                                 opt_method = Hopf_admm_cd,
-#                                                 preH = preH_ytc17, intH = intH_ytc17,
 #                                                 opt_p = opt_p_admm_cd,
 #                                                 warm = true,
 #                                                 check_all = true,
@@ -298,7 +290,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 # solution_inne, run_stats = Hopf_BRS(system, target_inne, T;
 #                                                 Xg=Gg, th,
 #                                                 opt_method = Hopf_admm_cd,
-#                                                 preH = preH_ytc17, intH = intH_ytc17,
 #                                                 opt_p = opt_p_admm_cd,
 #                                                 warm = true,
 #                                                 check_all = true,
@@ -381,7 +372,6 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 solution_ball_quad, run_stats_ball = Hopf_BRS(system, target_ball, T;
                                                 Xg=Gg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = true,
                                                 check_all = true,
@@ -390,7 +380,6 @@ solution_ball_quad, run_stats_ball = Hopf_BRS(system, target_ball, T;
 solution_tgte_quad, run_stats_tgte = Hopf_BRS(system, target_tgte, T;
                                                 Xg=Gg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = true,
                                                 check_all = true,
@@ -399,7 +388,6 @@ solution_tgte_quad, run_stats_tgte = Hopf_BRS(system, target_tgte, T;
 solution_cyle_quad, run_stats_cyle = Hopf_BRS(system, target_cyle, T;
                                                 Xg=Gg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = true,
                                                 check_all = true,
@@ -408,7 +396,6 @@ solution_cyle_quad, run_stats_cyle = Hopf_BRS(system, target_cyle, T;
 solution_oute_quad, run_stats_oute = Hopf_BRS(system, target_oute, T;
                                                 Xg=Gg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = true,
                                                 check_all = true,
@@ -417,7 +404,6 @@ solution_oute_quad, run_stats_oute = Hopf_BRS(system, target_oute, T;
 solution_inne_quad, run_stats_inne = Hopf_BRS(system, target_inne, T;
                                                 Xg=Gg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = false,
                                                 check_all = true,
@@ -507,7 +493,6 @@ target_taylor = (J_taylor, Js_taylor, (Ap_taylor, cx))
 solution_taylor, run_stats_taylor = Hopf_BRS(system_taylor, target_taylor, T;
                                                 Xg, th,
                                                 opt_method = Hopf_admm_cd,
-                                                preH = preH_ytc17, intH = intH_ytc17,
                                                 opt_p = opt_p_admm_cd,
                                                 warm = true,
                                                 check_all = true,

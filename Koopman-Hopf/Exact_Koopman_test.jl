@@ -3,8 +3,8 @@
 # wsharpless@ucsd.edu
 
 using LinearAlgebra, Plots, JLD
-include("/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf
+include(pwd() * "/src/HopfReachability.jl");
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_BRS, Hopf
 
 
 ########################################################################################
@@ -60,9 +60,8 @@ max_its = 10
 opt_p_admm = (ρ, ρ2, tol, max_its)
 
 ## Run the solver
-solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+solution, run_stats = Hopf_BRS(system, target, T;
                                                     opt_method = Hopf_cd,
-                                                    preH = preH_ytc17,
                                                     th,
                                                     grid_p,
                                                     opt_p = opt_p_cd,
@@ -111,9 +110,8 @@ for (ri, r) in enumerate([0.01, 1., 5., 10.])
      Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim)) #Controlled and Disturbed
      system = (M, B, C, Q, Q2, a1, a2)
 
-     solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+     solution, run_stats = Hopf_BRS(system, target, T;
                                                        opt_method = Hopf_cd, 
-                                                       preH=preH_ytc17,
                                                        th,
                                                        grid_p,
                                                     #    opt_p = opt_p_admm,
@@ -181,9 +179,8 @@ max_runs = 20
 opt_p = (vh, L, tol, lim, lll, max_runs)
 
 ## Run the solver
-solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+solution, run_stats = Hopf_BRS(system, target, T;
                                                     opt_method = Hopf_cd,
-                                                    preH = preH_ytc17,
                                                     th,
                                                     grid_p,
                                                     opt_p,
@@ -231,9 +228,8 @@ for dim in dims
     target = (J, Js, (Ap, cp))
 
     ## Run the solver
-    solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+    solution, run_stats = Hopf_BRS(system, target, T;
                                                         opt_method = Hopf_cd,
-                                                        preH = preH_ytc17,
                                                         th,
                                                         grid_p,
                                                         opt_p = opt_p_cd,
