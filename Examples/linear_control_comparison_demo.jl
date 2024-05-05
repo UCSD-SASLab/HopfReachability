@@ -52,7 +52,7 @@ Th = 0.4
 Tf = 2.0
 T = collect(Th : Th : Tf);
 
-## Grid Parameters
+## Points to Solve
 bd = (-3, 3)
 ϵ = 0.5e-7
 N = 10 + ϵ

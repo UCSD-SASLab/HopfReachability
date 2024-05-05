@@ -1,7 +1,11 @@
 module HopfReachability
 
-using LinearAlgebra, StatsBase, DifferentialEquations
+using LinearAlgebra 
+using StatsBase 
+# using OrdinaryDiffEq
+# using DifferentialEquations
 using TickTock, Suppressor 
+# using DifferentialEquations
 # using LaTeXStrings
 # using Plots 
 # using ScatteredInterpolation, ImageFiltering
@@ -23,19 +27,19 @@ function Hopf(system, target, tbH, z, v; p2=true, game="reach")
     J, Jˢ, Jp = target
     intH, Hdata = tbH
 
-    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2, game);
+    return Jˢ(v) - z'v + intH(system, Hdata, v; p2, game);
 end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
 function Hopf_BRS(system, target, T;
-                  opt_method=Hopf_cd, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
-                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="previous",
+                  opt_method=Hopf_cd, opt_p=nothing, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
+                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
 
     if opt_method == Hopf_cd
-        # Faster : (0.01, 2, ϵ, 100, 5, 10, 400)
-        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p
+        # opt_p = isnothing(opt_p) ? (0.01, 2, ϵ, 100, 5, 10, 400) : opt_p # Faster
+        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p # Safer
         admm = false
     elseif opt_method == Hopf_admm
         opt_p = isnothing(opt_p) ? (1e-1, 1e-2, 1e-5, 100) : opt_p 
@@ -45,7 +49,7 @@ function Hopf_BRS(system, target, T;
         admm = true
     end
 
-    ## Initialize
+    ## System
     simple_problem = !moving_grid && !moving_target
     preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
                       (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
@@ -70,13 +74,15 @@ function Hopf_BRS(system, target, T;
         println("\n  $pr_u_bds, $pr_d_bds$pr_error_bds")
         println("\n  for x ∈ ℝ^{$pr_x_dim}, u ∈ ℝ^{$pr_u_dim}, d ∈ ℝ^{$pr_d_dim}$pr_error_dim")
     end
-    system = length(system) == 7 ? (system..., zeros(size(system[1],1))) : system
-
+    
+    nx = typeof(system[1]) <: Function ? size(system[1](0.),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
+    system = length(system) == 7 ? (system..., zeros(nx)) : system
+    
     J, Jˢ, Jp = target
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
 
-    ## Initialize Data
+    ## System Data
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T = [], [], [], [], [], []
     averagetimes, pointstocheck, N, last_bi = [], [], 0, 1
     opt_data = opt_tracking ? [] : nothing
@@ -84,15 +90,10 @@ function Hopf_BRS(system, target, T;
     ## Precomputation
     if printing; println("\nPrecomputation, ..."); end
     Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
-    nx = size(Hmats[1])[2]
 
     ## Grid Set Up
     if isnothing(Xg)
-        bd, N = grid_p
-        lbs, ubs = typeof(bd) <: Tuple ? (typeof(bd[1]) <: Tuple ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
-        xigs = [collect(lbs[i] : 1/N : ubs[i]) .+ ϵ for i in 1:nx]
-        Xg = hcat(collect.(Iterators.product(xigs...))...)
-        #takes a while in REPL, but not when compiled... ## TODO : do this better
+        Xg = make_grid(grid_p, nx; small_shift=ϵ)
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # TODO: arbitrary atm, fix
@@ -102,7 +103,7 @@ function Hopf_BRS(system, target, T;
     if simple_problem
         
         @suppress begin; tick(); end # timing
-        ϕX = J(Xg, Q𝒯, c𝒯)
+        ϕX = J(Xg)
         push!(averagetimes, tok() / length(ϕX)) # initial grid eval time
 
         if check_all
@@ -138,7 +139,8 @@ function Hopf_BRS(system, target, T;
             Ni = moving_grid ? N[Tix] : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            ϕX = J(Xgi, Ai, ci)
+            J, Jˢ = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
+            ϕX = J(Xgi)
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
@@ -226,13 +228,13 @@ function Hopf_BRS(system, target, T;
     if printing; println("TOTAL TIME: $pr_totaltime s"); end
     if printing; println("\nAt t = $(vcat(0., T)) over Xg,"); end
     if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
-    if printing; println("  MEAN TIME: $pr_averagetimes s"); end
+    if printing; println("  MEAN TIME: $pr_averagetimes s/pt"); end
     if printing; println("  MIN VALUE: $min_ϕB⁺T"); end
     if printing; println("  MAX VALUE: $max_ϕB⁺T \n"); end
     run_stats = (totaltime, pointstocheck, averagetimes)
 
-    ## Return arrays of B⁺ over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
-    # if moving problem, target inserted at each Ti (2 * length(T) arrays)
+    ## Return arrays of B⁺ (near-boundary or all pts) over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
+    # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
     return (B⁺T, ϕB⁺T), run_stats, opt_data
 end
 
@@ -290,7 +292,7 @@ function Hopf_minT(system, target, x;
     uˢ, dˢ, Tˢ, ϕ, dϕdz = 0, 0, 0, 0, 0
     t = isnothing(T_init) ? collect(th: th: Th) : collect(th: th: T_init)
 
-    ## Initialize ϕs
+    ## System ϕs
     ϕ, dϕdz = Inf, 0
     v_init = isnothing(v_init_) ? nothing : copy(v_init_)
 
@@ -407,7 +409,7 @@ end
 #     th, Th, maxT = time_p
 #     t = isnothing(T_init) ? collect(th: th: maxT) : collect(th: th: T_init) # Bisection
 
-#     ## Initialize ϕs
+#     ## System ϕs
 #     ϕ, dϕdz = Inf, 0
 #     v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
 
@@ -554,7 +556,7 @@ end
 ## Proximal Splitting Algorithm for optimizing the Hopf Cost at point z (vectorized)
 function Hopf_admm(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=length(z))
 
-    ## Initialize
+    ## System
     Q, Q2 = system[4], system[6]
     ρ, ρ2, tol, max_its = opt_p
     Hmats, tix, th = tbH[2]
@@ -718,6 +720,28 @@ end
 ##################################################################################################
 ##################################################################################################
 
+## Make Grid
+function make_grid(bd, res, nx; return_all=false, small_shift=0.)
+    lbs, ubs = typeof(bd) <: Tuple ? (typeof(bd[1]) <: Tuple ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
+    xigs = [collect(lbs[i] : res : ubs[i]) .+ small_shift for i in 1:nx]
+    Xg = hcat(collect.(Iterators.product(xigs...))...) ## TODO : do this better
+    output = return_all ? (Xg, xigs, (lbs, ubs)) : Xg
+    return output
+end
+
+## Make Target
+function make_levelset_fs(c, r; Q=diagm(one(c)), type="ball") # TODO: tv arg instead of redifing for tv params
+    if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2"]
+        J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
+        Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
+        J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
+        Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
+    else
+        error("$type not supported yet") # TODO: l1, linf 
+    end
+    return J, Jˢ
+end
+
 ## Find points near boundary ∂ of f(z) = 0
 function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 
@@ -863,11 +887,12 @@ function mat_spiral(rows, cols)
 end
 
 ## Solve the Fundamental i.e. Flow-map for a Time-Varying Linear System
-function solveΦ(A, t; alg=Tsit5(), printing=false)
+function solveΦ(A, t; printing=false)
+    @assert (isdefined(Main, Symbol("OrdinaryDiffEq")) || isdefined(Main, Symbol("OrdinaryDiffEq"))) "Time-varying drift requires integration of the fundamental matrix. Load OrdinaryDiffEq.jl or DifferentialEquations.jl (e.g. `using OrdinaryDiffEq`)."
     if printing; print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); end
     nx = typeof(A) <: Function ? size(A(t[1]))[1] : size(A[1])[1];
     f = typeof(A) <: Function ? (U,p,s) -> U * A(t[end] - s) : (U,p,s) -> U * A[end:-1:1][findfirst(x->x<=0, (-t .+ s))]
-    sol = solve(ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg);
+    sol = Main.solve(Main.ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg=Main.Tsit5());
     if printing; print("LTV System inputted, integrating Φ(t)... Success!\n"); end
     return sol
 end

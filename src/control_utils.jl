@@ -42,7 +42,7 @@ function roll_out(system, target, ctrls, x0, steps; F = LinearEuler, ψ = x -> x
         Xs, Us, Ds = roll_out(system, target, ctrls, x0, steps)
     """
 
-    ## Initialize
+    ## System
     Xs = Dict(key => hcat(x0, zeros(nx, steps)) for key in keys(ctrls));
     Us = Dict(key => zeros(nu, steps) for key in keys(ctrls));
     Ds = Dict(key => zeros(nd, steps) for key in keys(ctrls)); 
@@ -122,7 +122,7 @@ end
 #                      "MPCg" => MPC_game(H=1, its=1))
 #     """
 
-#     ## Initialize
+#     ## System
 #     M, C, C2, Q, Q2, a, a2 = system
 #     Md, Cd, C2d = diagm(ones(size(M)[1])) + th * M, th * C, th * C2;
 #     Tˢ, dϕdz = 0, 0 #for plot_game

@@ -4,7 +4,7 @@ plotlyjs()
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_minT, Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_BRS
 
-## Initialize
+## System
 
 dim_x = 4 # agent dimension
 n_ag = 2

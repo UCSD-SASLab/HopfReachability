@@ -10,7 +10,7 @@ Th = 0.25
 Tf = 1.0
 T = collect(Th : Th : Tf)
 
-## Initialize (2D Example)
+## System (2D Example)
 max_u, max_d = 1.0, 0.5
 
 A = -[0. float(pi); -float(pi) 0.]

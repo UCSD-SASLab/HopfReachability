@@ -38,7 +38,7 @@ J(x::Matrix, A, c) = diag((x .- c)' * A * (x .- c))/2 .- 0.5
 Js(v::Matrix, A, c) = diag(v' * inv(A) * v)/2 + (c'v)' .+ 0.5 #don't need yet
 target = (J, Js, (Ap, cp))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 bd = (2, 8)
 ϵ = 0.5e-7
 N = 10 + ϵ
@@ -163,7 +163,7 @@ J(x::Matrix, A, c) = diag((x .- c)' * A * (x .- c))/2 .- 0.5
 Js(v::Matrix, A, c) = diag(v' * inv(A) * v)/2 + (c'v)' .+ 0.5 #don't need yet
 target = (J, Js, (Ap, cp))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 bd = (2, 8)
 ϵ = 0.5e-7
 N = 3 + ϵ

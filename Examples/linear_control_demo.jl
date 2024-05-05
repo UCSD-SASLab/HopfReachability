@@ -7,7 +7,7 @@ plotlyjs()
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_BRS, Hopf, Hopf_minT, HJoc_ytc17
 
-## Initialize (2D)
+## System (2D)
 M = [0. 1; -2 -3]
 C = 0.5 * [1 0; 0 1]
 C2 = 0.5 * [2 0; 0 1]
@@ -17,7 +17,7 @@ a1 = zero([0.5 0.75])
 a2 = zero([0.5 0])
 system = (M, C, C2, Q, Q2, a1, a2)
 
-## Initialize (3D)
+## System (3D)
 # M = [0. 1 0.; -2 -3 0.; 0. 0. -1.]
 # B = 0.5 * [1 0; 0 1; 0. 0.]
 # C = 0.5 * [2 0; 0 1; 0. 0.]
@@ -61,7 +61,7 @@ target = (J, Js, (Ap, cp))
 # Js(v::Matrix, a, c) = map(v -> v == a ? c : 10, eachcol(v))
 # target = (J, Js, (ap, cp))
 
-## Grid Parameters
+## Points to Solve
 bd = 3. # (-3, 3) for ellipse
 ϵ = 0.5e-7
 N = 10 + ϵ

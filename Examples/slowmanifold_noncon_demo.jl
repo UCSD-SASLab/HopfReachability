@@ -49,7 +49,7 @@ J(x::Matrix, A, c) = diag((x .- c)' * A * (x .- c))/2 .- 0.5
 Js(v::Matrix, A, c) = diag(v' * inv(A) * v)/2 + (c'v)' .+ 0.5 #don't need yet
 target = (J, Js, (Ap, cp))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 bd = (2, 8)
 ϵ = 0.5e-7
 N = 10 + ϵ
@@ -240,7 +240,7 @@ c_ljoe, c_ljie = round.(ljoe.d, digits=3), round.(ljie.d, digits=3)
 target_oute = (J_ball, Js_ball, (A_ljoe, c_ljoe))
 target_inne = (J_ball, Js_ball, (A_ljie, c_ljie))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 ϵ = 0.5e-7; N = 3 + ϵ
 x1g = collect(cx[1] + lbc : 1/N : cx[1] + ubc) .+ ϵ
 x2g = collect(cx[2] + lbc : 1/N : cx[2] + ubc) .+ ϵ
