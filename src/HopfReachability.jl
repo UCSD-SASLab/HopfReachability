@@ -3,6 +3,9 @@ module HopfReachability
 using LinearAlgebra 
 using StatsBase 
 using TickTock, Suppressor 
+using Plots, ScatteredInterpolation
+import Contour: contours, levels, level, lines, coordinates
+import Plots: plot, scatter, contour
 
 ##################################################################################################
 ##################################################################################################
@@ -747,7 +750,80 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
     return findall(ind[:] .> 0); # index of XY near ∂ID
 end
 
-## Plots BRS over T in X and Z space
+## Contour Plot
+function contour(solution; value=true, xigs=nothing, grid=false, title="BRS", titleval="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+    
+    @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
+    @assert !(grid && isnothing(xigs)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
+    labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:length(solution[1])-1]...) : labels
+    colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+
+    vals = copy(solution[2])
+    if !grid
+        interp_grid_bds = isnothing(interp_grid_bds) ? [minimum(minimum.(solgi for solgi in solution[1])), maximum(maximum.(solgi for solgi in solution[1]))] : interp_grid_bds
+        Xg, xigs, _ = make_grid(interp_grid_bds, interp_res, size(solution[1][1], 1); return_all=true)
+        for ti=1:length(solution[1])
+            vals[i] = evaluate(interpolate(interp_alg, solution[1][i], solution[2][i]), Xg)
+        end
+    end
+
+    BRS_plot = plot(title=title)
+    value_plot = value ? plot(title=titleval, camera=camera) : nothing
+    
+    for ti=1:length(solution[1]); 
+        Plots.contour!(BRS_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[1]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false, plotting_kwargs...)
+        plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); # contour label workaround
+    
+        if value; surface!(value_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[1]))', color=colors[ti], alpha=value_alpha, colorbar=false, plotting_kwargs...); end
+    
+        if value && BRS_on_value
+            cl = levels(contours(xigs..., reshape(solution[2][ti], length(xigs[1]), length(xigs[1]))', [0]))[1]
+            for line in lines(cl)
+                ys, xs = coordinates(line)
+                zs = 0 * xs
+                Plots.plot!(value_plot, xs, ys, zs, alpha=0.5, label="", lw=1, color=colors[ti])
+            end
+        end
+    end
+    
+    output = value ? plot(BRS_plot, value_plot) : BRS_plot
+    return output
+end
+
+## Scatter Plot of BRS
+function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", titleval="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+    
+    @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
+    labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:(length(solution[1])-1)]...) : labels
+    colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+
+    BRS_plot = plot(title=title)
+    value_plot = value ? plot(title=titleval, camera=camera) : nothing
+    
+    for ti=1:length(solution[1]);
+        b = solution[1][ti][:, abs.(solution[2][ti]) .< ϵs] 
+        xlims = [minimum(minimum.(solgi[1,:] for solgi in solution[1])), maximum(maximum.(solgi[1,:] for solgi in solution[1]))]
+        ylims = [minimum(minimum.(solgi[2,:] for solgi in solution[1])), maximum(maximum.(solgi[2,:] for solgi in solution[1]))]
+        Plots.scatter!(BRS_plot, collect(eachrow(b))..., color=colors[ti], label=labels[ti], alpha=alpha, markersize=markersize, markerstrokewidth=0., xlims=xlims, ylims=ylims, plotting_kwargs...);
+        
+        if value && BRS_on_value; Plots.scatter!(value_plot, b[1,:], b[2,:], -0*ones(length(b[1,:])), color=colors[ti], label="", alpha=0.5, markersize=markersize, markerstrokewidth=0., plotting_kwargs...); end
+    end
+    if value; for ti=1:length(solution[1]); Plots.scatter!(value_plot, solution[1][ti][1,:], solution[1][ti][2,:], solution[2][ti], color=colors[ti], label="", alpha=value_alpha, markersize=markersize, markerstrokewidth=0.); end; end
+
+    output = value ? plot(BRS_plot, value_plot) : BRS_plot
+    return output
+end
+
+function plot(solution; seriestype=:contour, kwargs...)
+    @assert seriestype ∈ [:scatter, :contour] "Only contour and scatter are currently supported."
+    if seriestype == :contour
+        contour(solution; kwargs...)
+    else
+        scatter(solution; kwargs...)
+    end
+end
+
+## Contour or Scatter Plot of BRS using plotly for interactive 3d plots: surfaces & volumes (needs https://plotly.com/julia/getting-started/)
 function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
     zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, 
     title=nothing, value_fn=false, xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
@@ -758,23 +834,23 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
     if isnothing(base_plot)
-        Xplot = isnothing(title) ? Main.Plots.plot(title="BRS: ϕ(X, T) = 0") : Main.Plots.plot(title=title)
+        Xplot = isnothing(title) ? Main.Plots.plot(title="BRS") : Main.Plots.plot(title=title)
     else
         Xplot = base_plot
     end
-    if zplot; Zplot = Main.Plots.plot(title="BRS: ϕ(Z, T) = 0"); end
+    if zplot; Zplot = Main.Plots.plot(title="BRS"); end
 
     plots = zplot ? [Xplot, Zplot] : [Xplot]
-    if value_fn; vfn_plots = zplot ? [Main.Plots.plot(title="Value: ϕ(X, T)"), Main.Plots.plot(title="Value: ϕ(Z, T)")] : [Main.Plots.plot(title="Value: ϕ(X, T)")]; end
+    if value_fn; vfn_plots = zplot ? [Main.Plots.plot(title="Value"), Main.Plots.plot(title="Value")] : [Main.Plots.plot(title="Value")]; end
 
     B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
     
-    ϕlabels = "ϕ(⋅,-" .* string.(T) .* ")"
-    Jlabels = "J(⋅, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
+    ϕlabels = "t=" .* string.(-T)
+    Jlabels = "Target, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1]))
     labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
 
-    Tcolors = length(T) > 1 ? palette(pal_colors, length(T)) : palette([pal_colors[2]], 2)
-    B0colors = length(T) > 1 ? palette(["black", "gray"], length(T)) : palette(["black"], 2)
+    Tcolors = length(T) > 1 ? Main.Plots.palette(pal_colors, length(T)) : Main.Plots.palette([pal_colors[2]], 2)
+    B0colors = length(T) > 1 ? Main.Plots.palette(["black", "gray"], length(T)) : Main.Plots.palette(["black"], 2)
     plot_colors = collect(Iterators.flatten(zip(B0colors, Tcolors)))
 
     ## Zipping Target to Plot Variation in Z-space over Time (already done in moving problems)
@@ -795,7 +871,7 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
             if simple_problem && bi == 1 && i !== 1; continue; end
 
             ϕ = bi % 2 == 1 ? ϕB⁺0 : ϕB⁺
-            label = simple_problem && i == 1 && bi == 1 ? "J(⋅)" : labels[i + (bi + 1) % 2]
+            label = simple_problem && i == 1 && bi == 1 ? "Target" : labels[i + (bi + 1) % 2]
 
             ## Plot Scatter
             if interpolate == false
@@ -826,14 +902,14 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
                         ## Construct Interpolation (Should skip this in the future and just use Plotly's built in one for contour)
                         itp = Main.ScatteredInterpolation.interpolate(Main.Polyharmonic(), b⁺, ϕ)
                         itpd = Main.evaluate(itp, G')
-                        iϕG = reshape(itpd, length(xig[1]), length(xig[2]))'
+                        iϕG = Main.reshape(itpd, length(xig[1]), length(xig[2]))'
                         
                         Main.surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
                     end
             
                 else
                     # isosurface!(plots[Int(bi > 2) + 1], xig..., iϕG, isomin=-ϵc, isomax=ϵc, surface_count=2, lc=plot_colors[i + (bi + 1) % 2], alpha=0.5)
-                    pl = Main.isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=attr(x_show=false, y_show=false, z_show=false),
+                    pl = Main.isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=Main.PlotlyJS.attr(x_show=false, y_show=false, z_show=false),
                         name=label, colorscale=[[0, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]], [1, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]]])
 
                     push!(plotly_pl[Int(bi > 2) + 1], pl)
@@ -848,8 +924,8 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
     end
 
     if nx > 2 && interpolate 
-        Xplot = Main.PlotlyJS.plot(plotly_pl[1], Layout(title="BRS of T, in X"));
-        if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Layout(title="BRS of T, in X")); end
+        Xplot = Main.PlotlyJS.plot(plotly_pl[1], Main.PlotlyJS.Layout(title="BRS of T, in X"));
+        if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Main.PlotlyJS.Layout(title="BRS of T, in X")); end
     end
 
     Main.display(Xplot); plots = [Xplot]

@@ -1,3 +1,4 @@
+
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_cd, make_grid, make_levelset_fs
 using LinearAlgebra, Plots
@@ -26,8 +27,4 @@ opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
 solution, run_stats = Hopf_BRS(system, target, times; Xg, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
-BRS_plot = plot(title="BRS")
-labels, colors, alpha, lw = vcat("Target", ["t=-$ti" for ti in times]...), vcat(:black, palette(["red", "blue"], length(times))...), 0.8, 2
-for ti=1:length(times)+1; contour!(BRS_plot, xigs..., reshape(solution[2][ti], length(xigs[1]), length(xigs[1]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false); end
-for ti=1:length(times)+1; plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); end # contour label workaround
-BRS_plot
+plot(solution; labels=vcat("Target", ["t=-$ti" for ti in times]...), grid=true, xigs=xigs, value=true, camera=(30, 15), seriestype=:scatter)

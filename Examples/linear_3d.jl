@@ -1,8 +1,8 @@
 
-using LinearAlgebra, Plots, PlotlyJS, ScatteredInterpolation
-plotlyjs()
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, make_grid, make_levelset_fs
+using LinearAlgebra, Plots, PlotlyJS
+plotlyjs() #https://plotly.com/julia/getting-started/
 
 ## System (3D Example)
 A, B₁, B₂ = [0. 1 0.; -2 -3 0.; 0. 0. -1.], 0.5 * [1 0; 0 1; 0. 0.], 0.5 * [2 0; 0 1; 0. 0.]
@@ -36,5 +36,5 @@ opt_p_admm_cd = ((1e-1, 1e-1, 1e-5, 3), (0.005, 5, 1e-4, 500, 1, 3, 500), ρ_gri
 
 solution, run_stats = Hopf_BRS(system, target, times; Xg, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
-plot_scatter = plot_nice(times, solution; A, ϵs=2e-1, interpolate=false, value_fn=true, alpha=0.1)
-plot_contour = plot_nice(times, solution; A, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_nice(times, solution; ϵs=2e-1, interpolate=false, alpha=0.1);
+plot_contour = plot_nice(times, solution; ϵc=1e-3, interpolate=true, alpha=0.5);
