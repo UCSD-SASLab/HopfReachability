@@ -32,7 +32,7 @@ Duffing.set("Duffing", "poly")
 ##   ========================
 
 include(home * "HL_fastHJR/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, plot_BRS, Hopf_minT, Hopf_admm_cd
+using .HopfReachability: Hopf_BRS, plot_nice, Hopf_minT, Hopf_admm_cd
 
 
 ##   Initialize
@@ -111,7 +111,7 @@ Gg = Matrix(Duffing.lift_data(Xg')');
 ## Test Target
 
 # ϕ0 = J(Xg, Ap[1:nx,1:nx], cp[1:nx]);
-# plot_BRS([0.0], [Xg, Xg], [ϕ0, ϕ0]; M=K, ϵs=1e-3, interpolate=false, value_fn=true, alpha=0.5)
+# plot_nice([0.0], [Xg, Xg], [ϕ0, ϕ0]; M=K, ϵs=1e-3, interpolate=false, value_fn=true, alpha=0.5)
 
 ## ADMM-CD Hybrid Parameters
 opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.01, 10, 1e-5, 100, 1, 4), 1, 1, 3)
@@ -127,7 +127,7 @@ GT, ϕGT = solution_Koop;
 # (solution_Koop, run_stats_Koop) = load("solution_Koop_res100_later.jld")["(solution_Koop, run_stats_Koop)"]
 
 ## Plot the Values given their first two-coordinates
-BRS_plots = plot_BRS(T, [Xg for i=1:length(T)+1], solution_Koop[2]; M=K, ϵs=3e-1, interpolate=false, value_fn=false, alpha=0.25)
+BRS_plots = plot_nice(T, ([Xg for i=1:length(T)+1], solution_Koop[2]); M=K, ϵs=3e-1, interpolate=false, value_fn=false, alpha=0.25)
 
 # ## Taylor
 solution_Taylor, run_stats_Taylor = Hopf_BRS(system_Taylor, target_Taylor, T; Xg, th, opt_method=Hopf_admm_cd, opt_p=opt_p_admm_cd, warm=true, printing=true);
@@ -137,7 +137,7 @@ XT, ϕXT = solution_Taylor;
 # (solution_Taylor, run_stats_Taylor) = load("solution_Taylor_res100_later.jld")["(solution_Taylor, run_stats_Taylor)"]
 
 ## Plot the Values given their first two-coordinates
-BRS_plots = plot_BRS(T, [Xg for i=1:length(T)+1], solution_Taylor[2]; M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
+BRS_plots = plot_nice(T, ([Xg for i=1:length(T)+1], solution_Taylor[2]); M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
 
 ## Get the Ground Truth from hj_reachability.py (nans when run in julia, smh jax)
 
@@ -175,7 +175,7 @@ println("LOWER: ",    minimum(hj_r_duffing.grid.states.tolist()), " in py vs $lb
 
 ϕT = disturbance_on_control ? ϕT_dc : ϕT_dall
 
-BRS_plots = plot_BRS(T, [Xg for i=1:length(T)+1], ϕT; M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
+BRS_plots = plot_nice(T, ([Xg for i=1:length(T)+1], ϕT); M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
 
 ## Compare the Sets
 ## ================
@@ -205,7 +205,7 @@ Taylor_jaccards
 
 time_pt = 6
 
-BRS_plots = plot_BRS_pretty(T[1:3], [Xg for i=1:length(T)], [ϕT[1], ϕT[time_pt], ϕGT[time_pt], ϕXT[time_pt]]; 
+BRS_plots = plot_nice_pretty(T[1:3], [Xg for i=1:length(T)], [ϕT[1], ϕT[time_pt], ϕGT[time_pt], ϕXT[time_pt]]; 
                         M, ϵs=[1e-1, 4e-1, 2e-1, 4e-1], ϵc=2e-3, interpolate=false, value_fn=false, alpha=0.1, 
                         latex_title=true, input_labels=[L"\mathcal{T}", L"\mathcal{R}(\mathcal{T}, t)", L"\mathcal{R}(\mathcal{T})", L"\mathcal{R}(\widetilde{\mathcal{T}}_\mathcal{G}, t)", L"\mathcal{R}(\widetilde{\mathcal{T}}_\mathcal{G}, t)", L"\mathcal{R}(\mathcal{T}_{\text{Taylor}}, t)", L"\mathcal{R}(\mathcal{T}_{\text{Taylor}}, t)"])
 
@@ -214,7 +214,7 @@ using LinearAlgebra, StatsBase, ScatteredInterpolation
 using Plots, ImageFiltering, TickTock, Suppressor, PlotlyJS
 # plotly()
 
-function plot_BRS_pretty(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+function plot_nice_pretty(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
     zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue], alpha=0.5, 
     title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2], latex_title=false, input_labels=nothing)
 

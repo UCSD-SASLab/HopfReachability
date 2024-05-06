@@ -4,7 +4,7 @@
 
 using LinearAlgebra, Plots, JLD
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_BRS, Hopf
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf
 
 
 ########################################################################################
@@ -74,8 +74,8 @@ B⁺T, ϕB⁺T = solution;
 # save("KHR_test.jld", "solution", solution)
 # B⁺T, ϕB⁺T = load("KHR_solution.jld", "solution");
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.1)
+plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
 
 
 ########################################################################################
@@ -120,9 +120,9 @@ for (ri, r) in enumerate([0.01, 1., 5., 10.])
                                                        printing=true);
      B⁺T, ϕB⁺T = solution;
 
-    #  plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
-    #  plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
-     plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
+    #  plot_contour = plot_nice(T, solution; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
+    #  plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
+     plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
      push!(plts, plot_contour)
 end
 
@@ -189,10 +189,10 @@ solution, run_stats = Hopf_BRS(system, target, T;
                                                     printing = true);
 B⁺T, ϕB⁺T = solution;
 
-# plot = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, contour=true);
+# plot = plot_nice(T, solution; M, cres=0.01, contour=true);
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, alpha=0.2);
+plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, alpha=0.1)
+plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, alpha=0.2);
 
 
 

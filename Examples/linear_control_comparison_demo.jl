@@ -12,7 +12,7 @@ include(pwd() * "/src/control_utils.jl");
 
 ## Our HopfReachability Pkg
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, plot_BRS, Hopf_minT
+using .HopfReachability: Hopf_BRS, plot_nice, Hopf_minT
 
 #   Initialize
 #   ==========
@@ -68,7 +68,7 @@ solution, run_stats = Hopf_BRS(system, target, T;
                                 check_all=true, # checks all points in grid (once); if false, just convolution of boundary
                                 printing=true);
 
-plot_BRS(T, solution...; A=M, cres=0.1, interpolate=true)
+plot_nice(T, solution; A=M, cres=0.1, interpolate=true)
 
 #   Test Control, Compare Solution of 1st step
 #   ==========================================

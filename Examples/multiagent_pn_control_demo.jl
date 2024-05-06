@@ -2,7 +2,7 @@
 using LinearAlgebra, Plots
 plotlyjs()
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_minT, Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_BRS
+using .HopfReachability: Hopf_minT, Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice
 
 ## System
 
@@ -98,8 +98,8 @@ opt_p_cd = (vh, L, tol, step_lim, re_inits, max_runs, max_its)
 #                                 printing=true);
 # B⁺T, ϕB⁺T = solution;
 
-# plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=1e-2, interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
+# plot_scatter = plot_nice(T, solution; M, ϵs=1e-2, interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution; M, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
 
 ## Find Boundary Pts of one BRS for Time of Interest
 # Toi = 0.2

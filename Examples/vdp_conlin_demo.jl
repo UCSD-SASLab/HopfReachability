@@ -1,7 +1,7 @@
 
 include(pwd() * "/HopfReachability.jl");
 include(pwd() * "/src/cons_lin_utils.jl");
-using .HopfReachability: Hopf_BRS, Hopf_cd, plot_BRS
+using .HopfReachability: Hopf_BRS, Hopf_cd, plot_nice
 
 ## VanderPol Example for Testing
 
@@ -113,7 +113,7 @@ target = (J, Jˢ, (diagm(ones(nx)), c𝒯));
 (_, ϕXgT_Hopf_errD_reach),    _ = Hopf_BRS(system_errD, target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
 (_, ϕXgT_Hopf_errD_avoid),    _ = Hopf_BRS(system_errD, target, T; th, Xg=Xg, error=true, game="avoid", opt_method=Hopf_cd, warm=false, check_all=true, printing=true);
 # println("Min Val ϕ(Xg[1:3], t): $(minimum(ϕXgT_Hopf[2]))")
-# plotlyjs(); plot_BRS(T, ϕXgT, ϕXgT_Hopf_errD_avoid; interpolate=true, value_fn=true)
+# plotlyjs(); plot_nice(T, (ϕXgT, ϕXgT_Hopf_errD_avoid); interpolate=true, value_fn=true)
 
 ## Plot Single BRZ vs. BRS (at t), Constant Error
 
@@ -445,7 +445,7 @@ end
 push!(ϕXgT_Hopf_TP_avoid, ϕXgT_Hopf_errD_avoidi);
 
 # plotlyjs()
-# plot_BRS(T, fill(Xg, length(T)+1), ϕXgT_Hopf_errD_avoidi[2]; interpolate=true, value_fn=false)
+# plot_nice(T, (fill(Xg, length(T)+1), ϕXgT_Hopf_errD_avoidi[2]); interpolate=true, value_fn=false)
 
 ## Plot Linear Ensemble Results
 

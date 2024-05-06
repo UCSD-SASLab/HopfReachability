@@ -2,10 +2,10 @@
 using LinearAlgebra, Plots
 plotlyjs()
 # push!(LOAD_PATH,"/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR");
-# using HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_BRS, Hopf
+# using HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_BRS, Hopf, Hopf_minT, HJoc_ytc17
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf, Hopf_minT, HJoc_ytc17
 
 ## System (2D)
 M = [0. 1; -2 -3]
@@ -93,8 +93,8 @@ solution, run_stats = Hopf_BRS(system, target, T;
                                 printing=true);
 B⁺T, ϕB⁺T = solution;
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=1e-2, interpolate=false, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_nice(T, solution; M, ϵs=1e-2, interpolate=false, alpha=0.1)
+plot_contour = plot_nice(T, solution; M, ϵc=1e-3, interpolate=true, value_fn=true, alpha=0.5)
 
 ## Find Boundary Pts of one BRS for Time of Interest
 Toi = 0.2

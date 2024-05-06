@@ -7,7 +7,7 @@ using Plots, PlotlyJS, LaTeXStrings, JLD
 plotlyjs() 
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_BRS, Hopf
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, Hopf
 
 using LSHFunctions: jaccard
 using Polyhedra
@@ -83,8 +83,8 @@ solution, run_stats = Hopf_BRS(system, target, T;   th, grid_p,
                                                     warm = true,
                                                     printing = true);
 
-plot_scatter = plot_BRS(T, solution...; M, ϵs=0.05, interpolate=false, value_fn=true, alpha=0.3)
-plot_contour = plot_BRS(T, solution...; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_nice(T, solution; M, ϵs=0.05, interpolate=false, value_fn=true, alpha=0.3)
+plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
 
 ########################################################################################
 ## 2D, Controlled & Disturbed
@@ -138,9 +138,9 @@ plot_contour = plot_BRS(T, solution...; M, ϵc=0.001, interpolate=true, value_fn
 #                                                        printing=true);
 #      B⁺T, ϕB⁺T = solution;
 
-#     #  plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
-#     #  plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
-#      plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
+#     #  plot_contour = plot_nice(T, solution; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
+#     #  plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
+#      plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
 #      push!(plts, plot_contour)
 # end
 
@@ -295,20 +295,20 @@ opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 500), 1, 1,
 #                                                 check_all = true,
 #                                                 printing = true);
 
-# plot_scatter = plot_BRS(T, solution_ball...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, solution_ball...; M, ϵc=0.001, interpolate=true, alpha=0.5)
+# plot_scatter = plot_nice(T, solution_ball; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution_ball; M, ϵc=0.001, interpolate=true, alpha=0.5)
 
-# plot_scatter = plot_BRS(T, solution_cyle...; M, ϵs=2., interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, solution_cyle...; M, ϵc=0.001, interpolate=true, alpha=0.5);
+# plot_scatter = plot_nice(T, solution_cyle; M, ϵs=2., interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution_cyle; M, ϵc=0.001, interpolate=true, alpha=0.5);
 
-# plot_scatter = plot_BRS(T, solution_tgte...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, solution_tgte...; M, ϵc=0.01, interpolate=true, alpha=0.5);
+# plot_scatter = plot_nice(T, solution_tgte; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution_tgte; M, ϵc=0.01, interpolate=true, alpha=0.5);
 
-# plot_scatter = plot_BRS(T, solution_oute...; M, ϵs=0.5, interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, solution_oute...; M, ϵc=0.01, interpolate=true, alpha=0.5);
+# plot_scatter = plot_nice(T, solution_oute; M, ϵs=0.5, interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution_oute; M, ϵc=0.01, interpolate=true, alpha=0.5);
 
-# plot_scatter = plot_BRS(T, solution_inne...; M, ϵs=0.5, interpolate=false, alpha=0.1)
-# plot_contour = plot_BRS(T, solution_inne...; M, ϵc=0.1, interpolate=true, alpha=0.5);
+# plot_scatter = plot_nice(T, solution_inne; M, ϵs=0.5, interpolate=false, alpha=0.1)
+# plot_contour = plot_nice(T, solution_inne; M, ϵc=0.1, interpolate=true, alpha=0.5);
 
 ## Attempt to combine plots
 
@@ -411,11 +411,11 @@ solution_inne_quad, run_stats_inne = Hopf_BRS(system, target_inne, T;
 
 ## Plotting Solution on quadtratic surface
 
-# plot_scatter_ball_quad = plot_BRS(T, solution_ball_quad...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_scatter_cyle_quad = plot_BRS(T, solution_cyle_quad...; M, ϵs=2., interpolate=false, alpha=0.1)
-# plot_scatter_tgte_quad = plot_BRS(T, solution_tgte_quad...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_scatter_oute_quad = plot_BRS(T, solution_oute_quad...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_scatter_inne_quad = plot_BRS(T, solution_inne_quad...; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_ball_quad = plot_nice(T, solution_ball_quad; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_cyle_quad = plot_nice(T, solution_cyle_quad; M, ϵs=2., interpolate=false, alpha=0.1)
+# plot_scatter_tgte_quad = plot_nice(T, solution_tgte_quad; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_oute_quad = plot_nice(T, solution_oute_quad; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_inne_quad = plot_nice(T, solution_inne_quad; M, ϵs=0.1, interpolate=false, alpha=0.1)
 
 ## Plotting in 2D by Projection
 
@@ -443,17 +443,17 @@ run_stats_pp = Dict(
 #     "InnE" => solution_inne_quad_auto[2],
 # )
 
-# plot_scatter_ball_2d = plot_BRS(T, Xgs, ϕXT_KH["Ball"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_scatter_tgte_2d = plot_BRS(T, Xgs, ϕXT_KH["TgtE"]; M, ϵs=0.035, interpolate=false, alpha=0.1)
-# plot_scatter_cyle_2d = plot_BRS(T, Xgs, ϕXT_KH["CylE"]; M, ϵs=1.0, interpolate=false, alpha=0.1)
-# plot_scatter_oute_2d = plot_BRS(T, Xgs, ϕXT_KH["OutE"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
-# plot_scatter_inne_2d = plot_BRS(T, Xgs, ϕXT_KH["InnE"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_ball_2d = plot_nice(T, Xgs, ϕXT_KH["Ball"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_tgte_2d = plot_nice(T, Xgs, ϕXT_KH["TgtE"]; M, ϵs=0.035, interpolate=false, alpha=0.1)
+# plot_scatter_cyle_2d = plot_nice(T, Xgs, ϕXT_KH["CylE"]; M, ϵs=1.0, interpolate=false, alpha=0.1)
+# plot_scatter_oute_2d = plot_nice(T, Xgs, ϕXT_KH["OutE"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
+# plot_scatter_inne_2d = plot_nice(T, Xgs, ϕXT_KH["InnE"]; M, ϵs=0.1, interpolate=false, alpha=0.1)
 
-plot_contour_ball_2d = plot_BRS(T, Xgs, ϕXT_KH["Ball"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
-plot_contour_tgte_2d = plot_BRS(T, Xgs, ϕXT_KH["TgtE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
-plot_contour_cyle_2d = plot_BRS(T, Xgs, ϕXT_KH["CylE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
-plot_contour_oute_2d = plot_BRS(T, Xgs, ϕXT_KH["OutE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
-plot_contour_inne_2d = plot_BRS(T, Xgs, ϕXT_KH["InnE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_contour_ball_2d = plot_nice(T, Xgs, ϕXT_KH["Ball"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_contour_tgte_2d = plot_nice(T, Xgs, ϕXT_KH["TgtE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_contour_cyle_2d = plot_nice(T, Xgs, ϕXT_KH["CylE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_contour_oute_2d = plot_nice(T, Xgs, ϕXT_KH["OutE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_contour_inne_2d = plot_nice(T, Xgs, ϕXT_KH["InnE"]; M, ϵc=0.001, interpolate=true, alpha=0.5)
 
 # save("KH_Toy_results_c01p25_up5-dp25_T5_fine---.jld", "max_u_d", (max_u, max_d), "T", T, "Xg", Xg, "ϕXT_KH", ϕXT_KH)
 
@@ -498,8 +498,8 @@ solution_taylor, run_stats_taylor = Hopf_BRS(system_taylor, target_taylor, T;
                                                 check_all = true,
                                                 printing = true);
 
-plot_scatter = plot_BRS(T, solution_taylor...; M, ϵs=0.1, interpolate=false, alpha=0.1)
-plot_contour = plot_BRS(T, solution_taylor...; M, ϵc=0.001, interpolate=true, alpha=0.5)
+plot_scatter = plot_nice(T, solution_taylor; M, ϵs=0.1, interpolate=false, alpha=0.1)
+plot_contour = plot_nice(T, solution_taylor; M, ϵc=0.001, interpolate=true, alpha=0.5)
 
 ϕXT_KH["Taylor"] = solution_taylor[2]
 run_stats_pp["Taylor"] = run_stats_taylor[2]
@@ -539,7 +539,7 @@ for ts in T
     push!(ϕXT_DP, Matrix(reshape(hj_r_output.tolist(), length(hj_r_output.tolist()), 1))[:,1])
 end
 
-BRS_plots = plot_BRS(T, Xgs, ϕXT_DP; M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
+BRS_plots = plot_nice(T, (Xgs, ϕXT_DP); M, ϵs=5e-2, interpolate=true, value_fn=false, alpha=0.5)
 
 ## Compare the Sets Quantitatively
 
@@ -695,12 +695,12 @@ pal_colors_d = Dict(
 # )
 
 contour_plots = [];
-plot_contour_DP = plot_BRS_pretty(T, Xgs, ϕXT_DP; M, ϵs=2e-2, ϵc=1e-5, interpolate=true, alpha=0.9, title=titles["DP"], pal_colors=pal_colors_d["DP"], input_labels=t_labels, thickening=true);
+plot_contour_DP = plot_nice_pretty(T, (Xgs, ϕXT_DP); M, ϵs=2e-2, ϵc=1e-5, interpolate=true, alpha=0.9, title=titles["DP"], pal_colors=pal_colors_d["DP"], input_labels=t_labels, thickening=true);
 # Plots.savefig(plot_contour_DP[1], "toy_BRS_legend_muted----.html")
 push!(contour_plots, plot_contour_DP[1])
 for key in ord_keys
     pal_colors = 
-    plot_contour_KH = plot_BRS_pretty(T, Xgs, ϕXT_KH[key]; M, ϵs=2e-2, ϵc=1e-6, interpolate=true, alpha=0.9, title=titles[key], pal_colors=pal_colors_d[key], thickening=true);
+    plot_contour_KH = plot_nice_pretty(T, (Xgs, ϕXT_KH[key]); M, ϵs=2e-2, ϵc=1e-6, interpolate=true, alpha=0.9, title=titles[key], pal_colors=pal_colors_d[key], thickening=true);
     push!(contour_plots, plot_contour_KH[1]);
 end
 contour_plot = Plots.plot(contour_plots..., layout=(2,3), extra_plot_kwargs = KW(:include_mathjax => "cdn"), size=(1000,600))
@@ -775,7 +775,7 @@ end
 #                 L"\mathcal{R}(\mathcal{E}_{O},t),\:\: \mathcal{E}_{O} \supset \mathcal{T}_\mathcal{G}", "",
 #                 L"\mathcal{R}(\mathcal{E}_{I},t),\:\: \mathcal{E}_{I} \subset Conv(\mathcal{T}_\mathcal{G})", "",]
 
-# BRS_plots = plot_BRS_pretty(fake_T, [Xg for i=1:length(fake_T)+1], [ϕXT_DP[1], ϕXT_DP[time_pt], [ϕXT_KH[key][time_pt] for key in ord_keys]...]; 
+# BRS_plots = plot_nice_pretty(fake_T, ([Xg for i=1:length(fake_T)+1], [ϕXT_DP[1], ϕXT_DP[time_pt], [ϕXT_KH[key][time_pt] for key in ord_keys]...]); 
 #                     M, ϵs=[0.05, 0.05, 0.2, 0.025, 0.025, 0.05], interpolate=true, value_fn=false, alpha=0.7, 
 #                     latex_title=true, legend=true, legendfontsize=6, input_labels=input_labels)
 
@@ -788,7 +788,7 @@ end
 #     title = [L"t=0.66s", L"t=1.33s", L"t=2s"][tpi]
 #     # title = [L"\text{BRS}: \:\: \phi(X, t=0.66 s) = 0", L"\text{BRS}: \:\: \phi(X, t=1.33s) = 0", L"\text{BRS}: \:\: \phi(X, t=2s) = 0"][tpi]
 
-#     BRS_plots = plot_BRS_pretty(T[1:3], [Xg for i=1:length(T)], [ϕT[1], ϕT[time_pt], ϕXT[time_pt], ϕGT[time_pt]]; 
+#     BRS_plots = plot_nice_pretty(T[1:3], ([Xg for i=1:length(T)], [ϕT[1], ϕT[time_pt], ϕXT[time_pt], ϕGT[time_pt]]); 
 #             M, ϵs=[1e-1, time_pt/3 * 1e-1, 5e-1, 1e-1], ϵc=2e-3, interpolate=false, value_fn=false, alpha=0.7, 
 #             title, latex_title=true, legend, legendfontsize=12, input_labels=[L"\mathcal{T}", L"\mathcal{R}(\mathcal{T}, t)", L"\mathcal{R}(\mathcal{T})", L"\mathcal{R}(\mathcal{T}_{\text{Taylor}}, t)", L"\mathcal{R}(\mathcal{T}_{\text{Taylor}}, t)", L"\mathcal{R}(\widetilde{\mathcal{T}_\mathcal{G}}, t)", L"\mathcal{R}(\widetilde{\mathcal{T}_\mathcal{G}}, t)"])
 
@@ -799,11 +799,12 @@ end
 
 # BRS_pannel = Plots.plot(BRS_plots_tp..., layout=(3,1), size=(400, 1200), extra_plot_kwargs = KW(:include_mathjax => "cdn"))
 # Plots.savefig(BRS_pannel, "BRS_pannel_nc_sp.html")
-function plot_BRS_pretty(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+function plot_nice_pretty(T, solution; M=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
     zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=[:red, :blue], alpha=0.5, 
     title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[cx[1]+lbc, cx[1]+ubc], ylims=[cx[2]+lbc, cx[2]+ubc+0.1], latex_title=false, 
     legend=true, input_labels=nothing, legendfontsize=12, thickening=false)
 
+    B⁺T, ϕB⁺T = solution
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
     Xplot = isnothing(title) ? Plots.plot(title=latex_title ? L"\text{BRS}: \:\: \phi(X, t) = 0" : "BRS: Φ(X, t) = 0", extra_plot_kwargs = KW(:include_mathjax => "cdn")) : Plots.plot(title=title, extra_plot_kwargs = KW(:include_mathjax => "cdn"))
@@ -923,7 +924,7 @@ function plot_BRS_pretty(T, B⁺T, ϕB⁺T; M=nothing, simple_problem=true, ϵs 
     return plots
 end
 
-plot_contour_DP = plot_BRS_pretty(T, Xgs, ϕXT_KH["TgtE"]; M, ϵc=1e-6, interpolate=true, alpha=0.7, title=titles["DP"], pal_colors=pal_colors)
+plot_contour_DP = plot_nice_pretty(T, (Xgs, ϕXT_KH["TgtE"]); M, ϵc=1e-6, interpolate=true, alpha=0.7, title=titles["DP"], pal_colors=pal_colors)
 
 ########################################################################################
 ## Tight Ellipse test

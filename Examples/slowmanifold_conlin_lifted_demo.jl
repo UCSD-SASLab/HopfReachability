@@ -1,7 +1,7 @@
 
 
 include(pwd() * "/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_cd, plot_BRS
+using .HopfReachability: Hopf_BRS, Hopf_cd, plot_nice
 
 include(pwd() * "/src/cons_lin_utils.jl"); 
 # include(pwd() * "/Zonotoping/cons_lin_utils_NLP_new.jl");
@@ -376,7 +376,7 @@ BRS_plots_dual = plot(BRS_plots_dual..., layout=(1,4), size=(900, 270), top_marg
 Gg_results_reach_cd, _ = Hopf_BRS(lifted_system_man_err, lifted_target, T; th, Xg=Gg, error=true, game="reach", opt_method=Hopf_cd, opt_p=opt_p_cd, warm=false, check_all=true, printing=true, warm_pattern="temporal");
 
 plotlyjs()
-BRS_contr_plot = plot_BRS(T, [Gg for _=1:size(T,1)+1], Gg_results_reach_cd[2]; interpolate=true, ϵs=0.01, markerstrokewidth=0, alpha=0.3);
+BRS_contr_plot = plot_nice(T, Gg_results_reach_cd; interpolate=true, ϵs=0.01, markerstrokewidth=0, alpha=0.3);
 
 using ImageFiltering
 smooth(X; gv=1.0) = imfilter(X, Kernel.gaussian(gv)) 
@@ -386,7 +386,7 @@ unpack_n_smooth(results_ϕT, res; gv=1.0) = smooth3D(reshape(results_ϕT, res, r
 # Gg_results_reach_cd_smoothed = [unpack_n_smooth(Gg_results_reach_cd[2][i], res2; gv=0.5) for i=1:length(Gg_results_reach_cd[2])];
 Gg_results_reach_cd_smoothed = [i > 4 ? unpack_n_smooth(Gg_results_reach_cd[2][i], res2; gv=0.8) : 
                                         unpack_n_smooth(Gg_results_reach_cd[2][i], res2; gv=0.) for i=1:length(Gg_results_reach_cd[2])];
-BRS_contr_plot = plot_BRS(T[1:5], [Gg for _=1:6], Gg_results_reach_cd_smoothed[1:6]; interpolate=true, ϵs=0.01, markerstrokewidth=0, alpha=0.4);
+BRS_contr_plot = plot_nice(T[1:5], ([Gg for _=1:6], Gg_results_reach_cd_smoothed[1:6]); interpolate=true, ϵs=0.01, markerstrokewidth=0, alpha=0.4);
 
 # quadvals = reshape(Xg[1,:].^2, res, res)
 # quad_trace = PlotlyJS.surface(x = xig1[1], y = xig1[2], z = quadvals, color=:black, opacity=0.1, colorbar=false, usecolormap=false, showscale=false)

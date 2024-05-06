@@ -1,7 +1,7 @@
 
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_BRS
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_nice
 using LaTeXStrings, ImageFiltering, JLD2
 
 include(pwd() * "/src/cons_lin_utils.jl"); 

@@ -55,7 +55,7 @@ Alone, the Hopf formula is only guaranteed to yield the correct value [1] when t
 - `Hopf_cd`/`Hopf_admm`: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
 - `Hopf`: evaluates the value of the Hopf formula for a given value of x and v.
 - `Hopf_minT`: finds the minimum time such that a given state is reachable and returns the optimal control
-- `plot_BRS`: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
+- `plot_nice`: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
 - `preH`, `intH`, `HJoc`: utility fn's for precomputing, integrating with precomputed data, solving the optimal control respectivley
 
 ## Demo
@@ -64,7 +64,7 @@ Here we solve the Backwards Reachable Sets for three simple, time-varying system
 
 ```
 using LinearAlgebra, Plots
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_box, preH_box, intH_ball, preH_ball, plot_BRS, Hopf
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_box, preH_box, intH_ball, preH_ball, plot_nice, Hopf
 
 ## Time
 th = 0.05
@@ -155,7 +155,7 @@ TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
 1-element Vector{Plots.Plot{Plots.PlotlyJSBackend}}:
  Plot{Plots.PlotlyJSBackend() n=5}
 ```
-Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions (target in black, t solutions in red -> blue),
+Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_nice` to plot the solutions (target in black, t solutions in red -> blue),
 
 <p align="center">
   <img src="./Koopman-Hopf/Figures/LTV_demo2.png" width="800">

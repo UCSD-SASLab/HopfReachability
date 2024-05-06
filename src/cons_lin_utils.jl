@@ -462,7 +462,7 @@ end
 # ## Solve with Hopf
 
 # include(pwd() * "/HopfReachability.jl");
-# using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_BRS
+# using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_nice
 
 # th=0.0325
 
@@ -495,7 +495,7 @@ end
 # (_, ϕXgT_Hopf_errU_reach),    _ = Hopf_BRS(system_errU, target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
 # (_, ϕXgT_Hopf_errD_avoid),    _ = Hopf_BRS(system_errD, target, T; th, Xg=Xg, error=true, game="avoid", opt_method=Hopf_cd, warm=false, check_all=true, printing=true);
 # # println("Min Val ϕ(Xg[1:3], t): $(minimum(ϕXgT_Hopf[2]))")
-# # plotlyjs(); plot_BRS(T, ϕXgT, ϕXgT_Hopf_errD_avoid; interpolate=true, value_fn=true)
+# # plotlyjs(); plot_nice(T, ϕXgT, ϕXgT_Hopf_errD_avoid; interpolate=true, value_fn=true)
 
 # ## Plot Single BRZ vs. BRS (at t), Constant Error
 
@@ -807,7 +807,7 @@ end
 
 # # plotlyjs()
 # # ϕXgT, _, _ = Hopf_BRS(system_errU_LE(1), 𝒯target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true,  check_all=true, printing=true);
-# # plot_BRS(T, fill(Xg, length(T)+1), ϕXgT_Hopf_LE_reach[1]; interpolate=false, value_fn=true)
+# # plot_nice(T, fill(Xg, length(T)+1), ϕXgT_Hopf_LE_reach[1]; interpolate=false, value_fn=true)
 
 # ## Plot Linear Ensemble Results
 
@@ -1011,10 +1011,10 @@ end
 
 # plotlyjs()
 # (ϕXgT, _ ), _ = Hopf_BRS(system_errD_LE(5), 𝒯target, T; th, Xg=Xg, error=true, game="avoid", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
-# plot_BRS(T, ϕXgT, ϕXgT_Hopf_LE_avoid[5]; interpolate=true, value_fn=false)
+# plot_nice(T, ϕXgT, ϕXgT_Hopf_LE_avoid[5]; interpolate=true, value_fn=false)
 
 # (ϕXgT, _ ), _ = Hopf_BRS(system_errU_LE(5), 𝒯target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
-# plot_BRS(T, ϕXgT, ϕXgT_Hopf_LE_reach[5]; interpolate=true, value_fn=false)
+# plot_nice(T, ϕXgT, ϕXgT_Hopf_LE_reach[5]; interpolate=true, value_fn=false)
 
 # ## Plot Linear Ensemble Results
 

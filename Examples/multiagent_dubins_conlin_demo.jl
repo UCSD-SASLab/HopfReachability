@@ -2,7 +2,7 @@
 using LinearAlgebra, Plots, LaTeXStrings, JLD2
 plotlyjs()
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_minT, Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_box, preH_box, plot_BRS, HJoc_box
+using .HopfReachability: Hopf_minT, Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_box, preH_box, plot_nice, HJoc_box
 using TickTock, Suppressor
 using ReachabilityAnalysis, Polyhedra
 using DifferentialEquations

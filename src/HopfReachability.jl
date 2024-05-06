@@ -2,15 +2,7 @@ module HopfReachability
 
 using LinearAlgebra 
 using StatsBase 
-# using OrdinaryDiffEq
-# using DifferentialEquations
 using TickTock, Suppressor 
-# using DifferentialEquations
-# using LaTeXStrings
-# using Plots 
-# using ScatteredInterpolation, ImageFiltering
-# using PlotlyJS
-# plotlyjs()
 
 ##################################################################################################
 ##################################################################################################
@@ -224,7 +216,7 @@ function Hopf_BRS(system, target, T;
     min_ϕB⁺T = round.(minimum.(ϕB⁺T), sigdigits=sigdigits)
     max_ϕB⁺T = round.(maximum.(ϕB⁺T), sigdigits=sigdigits)
 
-    if plotting; plot_BRS(T, B⁺T, ϕB⁺T; Φ, simple_problem, zplot); end
+    if plotting; plot_nice(T, (B⁺T, ϕB⁺T); Φ, simple_problem, zplot); end
     if printing; println("TOTAL TIME: $pr_totaltime s"); end
     if printing; println("\nAt t = $(vcat(0., T)) over Xg,"); end
     if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
@@ -756,21 +748,24 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 end
 
 ## Plots BRS over T in X and Z space
-function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
-    zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=["red", "blue"], alpha=0.5, 
-    title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
+function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+    zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, 
+    title=nothing, value_fn=false, xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
 
+    B⁺T, ϕB⁺T = solution
+    nx=size(B⁺T[1])[1]
+    if interpolate; @assert (isdefined(Main, Symbol("PlotlyJS"))) "Load PlotlyJS.jl for isosurfaces (`using PlotlyJS`)."; end
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
     if isnothing(base_plot)
-        Xplot = isnothing(title) ? Plots.plot(title="BRS: ϕ(X, T) = 0") : Plots.plot(title=title)
+        Xplot = isnothing(title) ? Main.Plots.plot(title="BRS: ϕ(X, T) = 0") : Main.Plots.plot(title=title)
     else
         Xplot = base_plot
     end
-    if zplot; Zplot = Plots.plot(title="BRS: ϕ(Z, T) = 0"); end
+    if zplot; Zplot = Main.Plots.plot(title="BRS: ϕ(Z, T) = 0"); end
 
     plots = zplot ? [Xplot, Zplot] : [Xplot]
-    if value_fn; vfn_plots = zplot ? [Plots.plot(title="Value: ϕ(X, T)"), Plots.plot(title="Value: ϕ(Z, T)")] : [Plots.plot(title="Value: ϕ(X, T)")]; end
+    if value_fn; vfn_plots = zplot ? [Main.Plots.plot(title="Value: ϕ(X, T)"), Main.Plots.plot(title="Value: ϕ(Z, T)")] : [Main.Plots.plot(title="Value: ϕ(X, T)")]; end
 
     B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
     
@@ -790,7 +785,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
         end
     end
 
-    if nx > 2 && interpolate; plotly_pl = zplot ? [Array{GenericTrace{Dict{Symbol, Any}},1}(), Array{GenericTrace{Dict{Symbol, Any}},1}()] : [Array{GenericTrace{Dict{Symbol, Any}},1}()]; end
+    if nx > 2 && interpolate; plotly_pl = zplot ? [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}(), Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()] : [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()]; end
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
         B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
@@ -808,11 +803,11 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
                 ## Find Boundary in Near-Boundary
                 b = b⁺[:, abs.(ϕ) .< ϵs]
 
-                scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:nx]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
+                Main.scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:nx]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 # scatter!(plots[Int(bi > 2) + 1], b[1,:], b[2,:], label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 
                 if value_fn
-                    scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims=xlims, ylims=ylims)
+                    Main.scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims=xlims, ylims=ylims)
                     # scatter!(vfn_plots[Int(bi > 2) + 1], b[1,:], b[2,:], ϕ, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], label=label)
                 end
             
@@ -820,7 +815,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
             else 
 
                 if nx == 2
-                    contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:nx]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label, linewidth=3)
+                    Main.contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:nx]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label, linewidth=3)
 
                     if value_fn
 
@@ -828,17 +823,17 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
                         xig = [collect(minimum(b⁺[i,:]) : cres : maximum(b⁺[i,:])) for i=1:nx]
                         G = hcat(collect.(Iterators.product(xig...))...)'
                         
-                        ## Construct Interpolationb (Should skip this in the future and just use Plotly's built in one for contour)
-                        itp = ScatteredInterpolation.interpolate(inter_method, b⁺, ϕ)
-                        itpd = evaluate(itp, G')
+                        ## Construct Interpolation (Should skip this in the future and just use Plotly's built in one for contour)
+                        itp = Main.ScatteredInterpolation.interpolate(Main.Polyharmonic(), b⁺, ϕ)
+                        itpd = Main.evaluate(itp, G')
                         iϕG = reshape(itpd, length(xig[1]), length(xig[2]))'
                         
-                        surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
+                        Main.surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
                     end
             
                 else
                     # isosurface!(plots[Int(bi > 2) + 1], xig..., iϕG, isomin=-ϵc, isomax=ϵc, surface_count=2, lc=plot_colors[i + (bi + 1) % 2], alpha=0.5)
-                    pl = isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=attr(x_show=false, y_show=false, z_show=false),
+                    pl = Main.isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=attr(x_show=false, y_show=false, z_show=false),
                         name=label, colorscale=[[0, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]], [1, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]]])
 
                     push!(plotly_pl[Int(bi > 2) + 1], pl)
@@ -848,17 +843,17 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
     end
 
     if value_fn
-        Xplot = Plots.plot(vfn_plots[1], Xplot)
-        if zplot; Zplot = Plots.plot(vfn_plots[2], Zplot); end
+        Xplot = Main.Plots.plot(vfn_plots[1], Xplot)
+        if zplot; Zplot = Main.Plots.plot(vfn_plots[2], Zplot); end
     end
 
     if nx > 2 && interpolate 
-        Xplot = PlotlyJS.plot(plotly_pl[1], Layout(title="BRS of T, in X"));
+        Xplot = Main.PlotlyJS.plot(plotly_pl[1], Layout(title="BRS of T, in X"));
         if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Layout(title="BRS of T, in X")); end
     end
 
-    display(Xplot); plots = [Xplot]
-    if zplot; display(Zplot); plots = [Xplot, Zplot]; end
+    Main.display(Xplot); plots = [Xplot]
+    if zplot; Main.display(Zplot); plots = [Xplot, Zplot]; end
 
     return plots
 end
