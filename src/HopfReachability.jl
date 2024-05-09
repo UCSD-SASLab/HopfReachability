@@ -27,7 +27,7 @@ end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
 function Hopf_BRS(system, target, T;
-                  opt_method=Hopf_cd, opt_p=nothing, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
+                  opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
                   Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
@@ -46,10 +46,10 @@ function Hopf_BRS(system, target, T;
 
     ## System
     simple_problem = !moving_grid && !moving_target
-    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
-                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+    preH, intH, HJoc = input_shapes ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (input_shapes ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
                       (preH, intH, HJoc))
-    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces inputshape to be box atm
+    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces input_shapes to be box atm
     
     if printing; 
         pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
@@ -88,7 +88,7 @@ function Hopf_BRS(system, target, T;
 
     ## Grid Set Up
     if isnothing(Xg)
-        Xg = make_grid(grid_p, nx; small_shift=ϵ)
+        Xg = make_grid(grid_p, nx; shift=ϵ)
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # TODO: arbitrary atm, fix
@@ -235,7 +235,7 @@ end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
 function Hopf_minT(system, target, x; 
-                  opt_method=Hopf_cd, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false,
+                  opt_method=Hopf_cd, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false,
                   T_init=nothing, v_init_=nothing, Φ=nothing,
                   time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
                   refine=0.5, refines=2, depth_counter=0,
@@ -254,10 +254,10 @@ function Hopf_minT(system, target, x;
         admm = true
     end
 
-    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
-                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+    preH, intH, HJoc = input_shapes ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (input_shapes ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
                       (preH, intH, HJoc))
-    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces inputshape to be box atm
+    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces input_shapes to be box atm
     
     if printing && depth_counter == 0; 
         pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
@@ -716,16 +716,16 @@ end
 ##################################################################################################
 
 ## Make Grid
-function make_grid(bd, res, nx; return_all=false, small_shift=0.)
+function make_grid(bd, res, nx; return_all=false, shift=0.)
     lbs, ubs = typeof(bd) <: Tuple ? (typeof(bd[1]) <: Tuple ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
-    xigs = [collect(lbs[i] : res : ubs[i]) .+ small_shift for i in 1:nx]
+    xigs = typeof(shift) <: Number ? [collect(lbs[i] : res : ubs[i]) .+ shift for i in 1:nx] : [collect(lbs[i] : res : ubs[i]) .+ shift[i] for i in 1:nx]
     Xg = hcat(collect.(Iterators.product(xigs...))...) ## TODO : do this better
     output = return_all ? (Xg, xigs, (lbs, ubs)) : Xg
     return output
 end
 
 ## Make Target
-function make_levelset_fs(c, r; Q=diagm(one(c)), type="ball") # TODO: tv arg instead of redifing for tv params
+function make_levelset_fs(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
     if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2"]
         J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
         Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
@@ -735,6 +735,18 @@ function make_levelset_fs(c, r; Q=diagm(one(c)), type="ball") # TODO: tv arg ins
         error("$type not supported yet") # TODO: l1, linf 
     end
     return J, Jˢ
+end
+
+## Make Parameters for a Set (for the inputs or target)
+function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
+    if type ∈ ["box", "Box", "linf", "Linf"]
+        Q = r * Q0
+    elseif type ∈ ["ball", "Ball", "l2", "L2"]
+        Q = 0.5 * r * Q0
+    else
+        error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
+    end
+    return Q, reshape(c, 1, length(c))
 end
 
 ## Find points near boundary ∂ of f(z) = 0
@@ -751,7 +763,7 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 end
 
 ## Contour Plot
-function contour(solution; value=true, xigs=nothing, grid=false, title="BRS", titleval="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
     
     @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
     @assert !(grid && isnothing(xigs)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
@@ -768,7 +780,7 @@ function contour(solution; value=true, xigs=nothing, grid=false, title="BRS", ti
     end
 
     BRS_plot = plot(title=title)
-    value_plot = value ? plot(title=titleval, camera=camera) : nothing
+    value_plot = value ? plot(title=title_value, camera=camera) : nothing
     
     for ti=1:length(solution[1]); 
         Plots.contour!(BRS_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[1]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false, plotting_kwargs...)
@@ -791,14 +803,14 @@ function contour(solution; value=true, xigs=nothing, grid=false, title="BRS", ti
 end
 
 ## Scatter Plot of BRS
-function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", titleval="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
     
     @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
     labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:(length(solution[1])-1)]...) : labels
     colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
 
     BRS_plot = plot(title=title)
-    value_plot = value ? plot(title=titleval, camera=camera) : nothing
+    value_plot = value ? plot(title=title_value, camera=camera) : nothing
     
     for ti=1:length(solution[1]);
         b = solution[1][ti][:, abs.(solution[2][ti]) .< ϵs] 

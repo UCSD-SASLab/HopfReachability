@@ -104,7 +104,7 @@ J(x::Matrix, Qₓ, cₓ) = diag((x .- cₓ)' * inv(Qₓ) * (x .- cₓ))/2 .- 0.5
 Jˢ(v::Vector, Qₓ, cₓ) = (v' * Qₓ * v)/2 + cₓ'v + 0.5 * r^2;
 target = (J, Jˢ, (diagm(ones(nx)), c𝒯));
 
-# solution, run_stats = Hopf_BRS(system, target, T; th, Xg=Xg[:,1:end], inputshape="box", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
+# solution, run_stats = Hopf_BRS(system, target, T; th, Xg=Xg[:,1:end], input_shapes="box", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
 (ϕXgT, ϕXgT_Hopf_errc_reach), _ = Hopf_BRS(system_errc, target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
 (_, ϕXgT_Hopf_errc_avoid),    _ = Hopf_BRS(system_errc, target, T; th, Xg=Xg, error=true, game="avoid", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
 (_, ϕXgT_Hopf_errt_reach),    _ = Hopf_BRS(system_errt, target, T; th, Xg=Xg, error=true, game="reach", opt_method=Hopf_cd, warm=true, check_all=true, printing=true);
