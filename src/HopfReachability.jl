@@ -60,7 +60,7 @@ function Hopf_BRS(system, target, T;
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
-        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {|| (u-c₁)ᵗ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {|| (d-c₂)ᵗ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
+        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {||(u-c₁)ᵀ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {||(d-c₂)ᵀ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
         pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
         
         println("\nGiven,")
@@ -268,7 +268,7 @@ function Hopf_minT(system, target, x;
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
-        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {|| (u-c₁)ᵗ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {|| (d-c₂)ᵗ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
+        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {||(u-c₁)ᵀ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {||(d-c₂)ᵀ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
         pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
         
         println("\nGiven,")
@@ -763,12 +763,15 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 end
 
 ## Contour Plot
-function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, 
+    plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
     
     @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
     @assert !(grid && isnothing(xigs)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
     labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:length(solution[1])-1]...) : labels
     colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+    plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
 
     vals = copy(solution[2])
     if !grid
@@ -779,17 +782,17 @@ function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", tit
         end
     end
 
-    BRS_plot = plot(title=title)
-    value_plot = value ? plot(title=title_value, camera=camera) : nothing
+    BRS_plot = Plots.plot(title=title)
+    value_plot = value ? Plots.plot(title=title_value, camera=camera) : nothing
     
     for ti=1:length(solution[1]); 
-        Plots.contour!(BRS_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[1]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false, plotting_kwargs...)
-        plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); # contour label workaround
+        Plots.contour!(BRS_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[2]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false)
+        Plots.plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); # contour label workaround
     
-        if value; surface!(value_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[1]))', color=colors[ti], alpha=value_alpha, colorbar=false, plotting_kwargs...); end
+        if value; surface!(value_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[2]))', color=colors[ti], alpha=value_alpha, colorbar=false); end
     
         if value && BRS_on_value
-            cl = levels(contours(xigs..., reshape(solution[2][ti], length(xigs[1]), length(xigs[1]))', [0]))[1]
+            cl = levels(contours(xigs..., reshape(solution[2][ti], length(xigs[1]), length(xigs[2]))', [0]))[1]
             for line in lines(cl)
                 ys, xs = coordinates(line)
                 zs = 0 * xs
@@ -797,17 +800,26 @@ function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", tit
             end
         end
     end
-    
-    output = value ? plot(BRS_plot, value_plot) : BRS_plot
+
+    # FIXME : plot is mishandling the kwargs? ERROR: "Cannot convert Pair{Symbol, Tuple{Int64, Int64}} to series data for plotting"
+    # plot!(BRS_plot, kwargs...)
+    # if value; plot!(value_plot, kwargs...); end
+    # println(kwargs); println(kwargs...)
+
+    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
+    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
     return output
 end
 
 ## Scatter Plot of BRS
-function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, plotting_kwargs...)
+function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, 
+    plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
     
     @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
     labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:(length(solution[1])-1)]...) : labels
     colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+    plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
 
     BRS_plot = plot(title=title)
     value_plot = value ? plot(title=title_value, camera=camera) : nothing
@@ -816,19 +828,20 @@ function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", ti
         b = solution[1][ti][:, abs.(solution[2][ti]) .< ϵs] 
         xlims = [minimum(minimum.(solgi[1,:] for solgi in solution[1])), maximum(maximum.(solgi[1,:] for solgi in solution[1]))]
         ylims = [minimum(minimum.(solgi[2,:] for solgi in solution[1])), maximum(maximum.(solgi[2,:] for solgi in solution[1]))]
-        Plots.scatter!(BRS_plot, collect(eachrow(b))..., color=colors[ti], label=labels[ti], alpha=alpha, markersize=markersize, markerstrokewidth=0., xlims=xlims, ylims=ylims, plotting_kwargs...);
+        Plots.scatter!(BRS_plot, collect(eachrow(b))..., color=colors[ti], label=labels[ti], alpha=alpha, markersize=markersize, markerstrokewidth=0., xlims=xlims, ylims=ylims);
         
-        if value && BRS_on_value; Plots.scatter!(value_plot, b[1,:], b[2,:], -0*ones(length(b[1,:])), color=colors[ti], label="", alpha=0.5, markersize=markersize, markerstrokewidth=0., plotting_kwargs...); end
+        if value && BRS_on_value; Plots.scatter!(value_plot, b[1,:], b[2,:], -0*ones(length(b[1,:])), color=colors[ti], label="", alpha=0.5, markersize=markersize, markerstrokewidth=0.); end
     end
     if value; for ti=1:length(solution[1]); Plots.scatter!(value_plot, solution[1][ti][1,:], solution[1][ti][2,:], solution[2][ti], color=colors[ti], label="", alpha=value_alpha, markersize=markersize, markerstrokewidth=0.); end; end
 
-    output = value ? plot(BRS_plot, value_plot) : BRS_plot
+    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
+    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
     return output
 end
 
-function plot(solution; seriestype=:contour, kwargs...)
+function plot(solution; interpolate=true, seriestype=:contour, kwargs...)
     @assert seriestype ∈ [:scatter, :contour] "Only contour and scatter are currently supported."
-    if seriestype == :contour
+    if interpolate || seriestype == :contour
         contour(solution; kwargs...)
     else
         scatter(solution; kwargs...)
@@ -837,7 +850,7 @@ end
 
 ## Contour or Scatter Plot of BRS using plotly for interactive 3d plots: surfaces & volumes (needs https://plotly.com/julia/getting-started/)
 function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
-    zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, 
+    zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, interp_alg=ScatteredInterpolation.Polyharmonic(),
     title=nothing, value_fn=false, xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
 
     B⁺T, ϕB⁺T = solution
@@ -912,9 +925,9 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
                         G = hcat(collect.(Iterators.product(xig...))...)'
                         
                         ## Construct Interpolation (Should skip this in the future and just use Plotly's built in one for contour)
-                        itp = Main.ScatteredInterpolation.interpolate(Main.Polyharmonic(), b⁺, ϕ)
-                        itpd = Main.evaluate(itp, G')
-                        iϕG = Main.reshape(itpd, length(xig[1]), length(xig[2]))'
+                        itp = interpolate(interp_alg, b⁺, ϕ)
+                        itpd = evaluate(itp, G')
+                        iϕG = reshape(itpd, length(xig[1]), length(xig[2]))'
                         
                         Main.surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
                     end

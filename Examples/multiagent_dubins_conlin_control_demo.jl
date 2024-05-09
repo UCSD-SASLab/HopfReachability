@@ -1,6 +1,6 @@
 
 using LinearAlgebra, JLD2
-include(pwd() * "/HopfReachability.jl");
+include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_minT, Hopf_admm_cd
 using TickTock, Suppressor
 using ReachabilityAnalysis, Polyhedra

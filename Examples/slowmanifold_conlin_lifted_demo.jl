@@ -1,9 +1,10 @@
 
 
-include(pwd() * "/HopfReachability.jl");
+include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_cd, plot_nice
 
-include(pwd() * "/src/cons_lin_utils.jl"); 
+include(pwd() * "/src/cons_lin_utils.jl");
+include(pwd() * "/src/DP_comparison_utils.jl"); 
 # include(pwd() * "/Zonotoping/cons_lin_utils_NLP_new.jl");
 
 pushfirst!(pyimport("sys")."path", pwd() * "/Examples/DP_comparison_files");

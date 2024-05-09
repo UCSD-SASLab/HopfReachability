@@ -331,7 +331,7 @@ end
 
 # ## Solve with Hopf
 
-# include(pwd() * "/HopfReachability.jl");
+# include(pwd() * "/src/HopfReachability.jl");
 # using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_nice
 
 # th=0.0325

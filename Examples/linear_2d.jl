@@ -29,4 +29,4 @@ opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
 solution, run_stats = Hopf_BRS(system, target, times; Xg, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
-plot(solution; labels=vcat("Target", ["t=-$ti" for ti in times]...), grid=true, xigs=xigs, value=true, camera=(30, 15), seriestype=:contour)
+plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=true, camera=(30, 15))

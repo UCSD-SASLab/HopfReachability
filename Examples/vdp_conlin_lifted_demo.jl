@@ -4,7 +4,8 @@ include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, plot_nice
 using LaTeXStrings, ImageFiltering, JLD2
 
-include(pwd() * "/src/cons_lin_utils.jl"); 
+include(pwd() * "/src/cons_lin_utils.jl");
+include(pwd() * "/src/DP_comparison_utils.jl"); 
 # include(pwd() * "/Zonotoping/cons_lin_utils.jl"); 
 # include(pwd() * "/Zonotoping/cons_lin_utils_NLP_new.jl");
 
