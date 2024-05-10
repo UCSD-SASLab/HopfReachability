@@ -743,7 +743,15 @@ function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
     if type ∈ ["box", "Box", "linf", "Linf"]
         Q = r * Q0
     elseif type ∈ ["ball", "Ball", "l2", "L2"]
-        Q = 0.5 * r * Q0
+        Q = r^2 * Q0 # works
+        # Q = (0.5 * r)^2 * Q0 # works
+        # Q = Q0 / r^2
+        # Q = Q0 / r
+        # Q = r * Q0 # way too big
+        # Q = (0.5/sqrt(2)) * r^2 * Q0 # closest
+        # Q = r^2 * Q0 # same as 0.5r..?
+        # Q = 0.5 * r^2 * Q0 # closer
+        # Q = 0.5 * r * Q0 # worked with old Σ, but too big w/ sqrt.(Σ)
     else
         error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
     end
@@ -1022,8 +1030,8 @@ function intH_ball(system, Hdata, v; p2=true, game="reach",)
     Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
     
     ## Quadrature sum
-    H1 = th * sgn_p1 * (sum(map(norm, eachcol(G * Rvt))) + sum(a * Rvt)) # player 1 / control
-    H2 = p2 ? th * sgn_p2 * (-sum(map(norm, eachcol(G2 * R2vt))) + sum(a2 * R2vt)) : 0 # player 2 / disturbance, opponent   
+    H1 = th * sgn_p1 * (sum(map(norm, eachcol(0.5 * G * Rvt))) + sum(a * Rvt)) # player 1 / control
+    H2 = p2 ? th * sgn_p2 * (-sum(map(norm, eachcol(0.5 * G2 * R2vt))) + sum(a2 * R2vt)) : 0 # player 2 / disturbance, opponent   
 
     return H1 + H2
 end
@@ -1059,10 +1067,10 @@ function preH_ball(system, target, t; opt_p=nothing, admm=false, F_init=nothing,
     ## Precomputing SVD for matrix sqrt
     _, Σ, VV = svd(Q);
     _, Σ2, VV2 = svd(Q2);
-    # G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
-    # G2 = Diagonal(sqrt.(Σ2)) * VV2;
-    G = Diagonal(Σ) * VV; #TODO FIX & TEST
-    G2 = Diagonal(Σ2) * VV2;
+    G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
+    G2 = Diagonal(sqrt.(Σ2)) * VV2;
+    # G = Diagonal(Σ/2) * VV; #TODO FIX & TEST
+    # G2 = Diagonal(Σ2/2) * VV2;
 
     ## Precomputing ADMM matrix
     F = admm ? inv(F) : F
@@ -1085,9 +1093,8 @@ function HJoc_ball(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ
 
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
-    G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
-    # G, G2 = Diagonal(Σ) * VV, Diagonal(Σ2) * VV2;
-    # G, G2 = Diagonal(4Σ) * VV, Diagonal(4Σ2) * VV2;
+    G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2; # works with sqrt.(Σ) and Q = (0.5 * r)^2 * Q0
+    # G, G2 = Diagonal(Σ/2) * VV, Diagonal(Σ2/2) * VV2;
 
     uˢ = Q  != zero(Q)  ? sgn_p1 * inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' : zeros(nu)
     dˢ = Q2 != zero(Q2) && p2 ? sgn_p2 * (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(nd)
