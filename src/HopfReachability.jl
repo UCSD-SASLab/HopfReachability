@@ -773,7 +773,7 @@ function contour(solution; value=true, xigs=nothing, grid=true, grid_p=nothing, 
     labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:length(solution[1])-1]...) : labels
     colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
     plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
-    Xg, xigs, _ = isnothing(xigs) && grid ? make_grid(grid_p..., size(solution[1][1],1); return_all=true) : fill(nothing, 3)
+    Xg, xigs, _ = grid && isnothing(xigs) ? make_grid(grid_p..., size(solution[1][1],1); return_all=true) : (nothing, xigs, nothing)
     xigs_ = isnothing(xigs) ? xigs : copy(xigs)
 
     vals = copy(solution[2])
@@ -1086,6 +1086,8 @@ function HJoc_ball(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
     G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
+    # G, G2 = Diagonal(Σ) * VV, Diagonal(Σ2) * VV2;
+    # G, G2 = Diagonal(4Σ) * VV, Diagonal(4Σ2) * VV2;
 
     uˢ = Q  != zero(Q)  ? sgn_p1 * inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' : zeros(nu)
     dˢ = Q2 != zero(Q2) && p2 ? sgn_p2 * (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(nd)

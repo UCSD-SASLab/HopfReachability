@@ -42,9 +42,9 @@ solution, run_stats = Hopf_BRS(system, target, T; th, Xg, input_shapes, game, op
 solution_t, run_stats = Hopf_BRS(system_t, target, T; th, Xg, input_shapes, game, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 solution_f, run_stats = Hopf_BRS(system_f, target, T; th, Xg, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
-plot_contour = plot(solution; xigs=xigs, value=false, title="A - Hopf");
+plot_contour = plot(solution; xigs=xigs, value=false, title="A - Hopf")
 plot_contour_t = plot(solution_t; xigs=xigs, value=false, title="Aₜ - Hopf")
-plot_contour_f = plot(solution_f; xigs=xigs, value=false, title="A(t) - Hopf");
+plot_contour_f = plot(solution_f; xigs=xigs, value=false, title="A(t) - Hopf")
 
 ### Solve "true" BRS with DP (requires hj_reachability.py)
 include(pwd() * "/src/DP_comparison_utils.jl");
