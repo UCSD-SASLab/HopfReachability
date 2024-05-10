@@ -5,7 +5,7 @@
 #   ---------------------
 
 using LinearAlgebra, Plots, Suppressor, LaTeXStrings, TickTock
-plotlyjs()
+# plotlyjs()
 
 ## Comparison
 using iLQGames, JuMP, Gurobi
@@ -81,7 +81,7 @@ function roll_out(system, target, ctrls, x0, steps; F = LinearEuler, ψ = x -> x
             for c in keys(ctrls); Ds[c][:, s] = Ds[same_d][:, s]; end
         elseif random_d 
             if printing; print(" perturbed by random disturbance"); end
-            d = ellipsoid_sample(1, system[5], 1.; surface)
+            d = ellipsoid_sample(1, system[6], 1.; surface)
             for c in keys(ctrls); Ds[c][:, s] = d; end
         else
             if printing; print(" perturbed by their own estimated worst disturbance"); end
@@ -89,7 +89,7 @@ function roll_out(system, target, ctrls, x0, steps; F = LinearEuler, ψ = x -> x
 
         ## Evolve States
         for c in keys(ctrls)
-            if random_d && !random_same; Ds[c][:, s] = ellipsoid_sample(1, system[5], 1.; surface); if printing; print(" (different)"); end; end
+            if random_d && !random_same; Ds[c][:, s] = ellipsoid_sample(1, system[6], 1.; surface); if printing; print(" (different)"); end; end
             Xs[c][:, s+1] = F(Xs[c][:, s], Us[c][:, s], Ds[c][:, s]; p=system, th)
         end
 
@@ -123,7 +123,7 @@ end
 #     """
 
 #     ## System
-#     M, C, C2, Q, Q2, a, a2 = system
+#     M, C, C2, Q, a, Q2, a2 = system
 #     Md, Cd, C2d = diagm(ones(size(M)[1])) + th * M, th * C, th * C2;
 #     Tˢ, dϕdz = 0, 0 #for plot_game
 
@@ -173,31 +173,28 @@ end
 #     return Xs, Us, Ds
 # end
 
-function plot_sim(system, target, Xs; grid_p=((-3, 3), 10.), title="Controlled Trajectories", plot_drift=true, plot_target=true, scale=0.6)
+function plot_sim(system, target, Xs; grid_p=((-3, 3), 0.1), title="Controlled Trajectories", plot_drift=true, plot_target=true, scale=0.6, lw_traj=2)
     """
     Plots the Controlled Trajectories, Target and Autonomous Drift from a dictionary of paths. (for 2D)
     """
 
-    M, C, C2, Q, Q2, a, a2 = system
+    M, C, C2, Q, a, Q2, a2 = system
     J, _, Jp = target
     nx = size(M)[1]
 
     ## Make Grid
-    bd, N = grid_p
-    lb, ub = typeof(bd) <: Tuple ? bd : (-bd, bd)
-    xig = collect(lb : 3/N : ub) .+ ϵ; lg = length(xig)
-    Xg = hcat(collect.(Iterators.product([xig for i in 1:nx]...))...)[end:-1:1,:]
+    Xg, xigs, _ = make_grid(grid_p..., size(M,1); return_all=true)
     
     ## Target and Field
-    Jxg = reshape(J(Xg, Jp...), length(xig), length(xig));
+    Jxg = reshape(J(Xg), length(xigs[1]), length(xigs[1]))';
     Fxg = M * Xg; Fn = Fxg ./ map(norm, eachcol(Fxg))'
 
     sim_plot = plot(title=title)
 
     if plot_drift; quiver!(sim_plot, Xg[1,:], Xg[2,:], quiver = 0.75 * scale .* (Fn[1,:],  Fn[2,:]), label="f", color="blue", alpha=0.1); end
-    if plot_target; contour!(sim_plot, xig, xig, Jxg, levels=-1e-3:1e-3:1e-3, color="black", colorbar=false); end
+    if plot_target; contour!(sim_plot, xigs[1], xigs[1], Jxg, levels=[0], color="black", colorbar=false); end
 
-    for c in sort(collect(keys(Xs))); plot!(sim_plot, Xs[c][1,:], Xs[c][2,:], label=c); end
+    for c in sort(collect(keys(Xs))); plot!(sim_plot, Xs[c][1,:], Xs[c][2,:], label=c, lw=lw_traj); end
 
     scatter!(sim_plot, [Xs[first(keys(Xs))][1,1]], [Xs[first(keys(Xs))][2,1]], label="x_0", legend=:bottomleft)
 
@@ -275,7 +272,7 @@ function MPC_game(system, target, x0; th=5e-2, H=1, its=1, input_constraint="cou
     For simplicity, use H = 1 & its = 1 to just compute optimal control for 1-step worst disturbance.
     """
 
-    M, C, C2, Q, Q2, a, a2 = system
+    M, C, C2, Q, a, Q2, a2 = system
     Md, Cd, C2d = diagm(ones(size(M)[1])) + th * M, th * C, th * C2;
     J, _, Jp = target
     Ap, cp = Jp
@@ -348,9 +345,10 @@ function MPC_stochastic(system, target, x0; th=5e-2, H=3, N_T=10, input_constrai
     Computes the optimal control over horizon H given N_T sample trajectories of disturbance.
     """
 
-    M, C, C2, Q, Q2, a, a2 = system
+    M, C, C2, Q, a, Q2, a2 = system
     Md, Cd, C2d = diagm(ones(size(M)[1])) + th * M, th * C, th * C2;
     J, _, Jp = target
+    Ap, cp = Jp
 
     nx, nu, nd = size(M)[2], size(C)[2], size(C2)[2]
         
@@ -387,7 +385,7 @@ function MPC_stochastic(system, target, x0; th=5e-2, H=3, N_T=10, input_constrai
         end
     end
 
-    @objective(model, Min, sum(0.5 * ((x[:, H+1, k] .- cp)' * inv(Ap) * (x[:, H+1, k] .- cp) - 1) for k in 1:N_T)/k);
+    @objective(model, Min, sum(0.5 * ((x[:, H+1, k] .- cp)' * inv(Ap) * (x[:, H+1, k] .- cp) - 1) for k in 1:N_T)/N_T);
     optimize!(model);
 
     uˢH = value.(u)
@@ -429,7 +427,7 @@ function plot_game(system, pair_strats, pair_labels; p, t, p1_strats=[], p1_labe
     Plots the value of the 2D, linear TV differential game with coupled controls
     """
 
-    M, C, C2, Q, Q2, a, a2 = system    
+    M, C, C2, Q, a, Q2, a2 = system    
     
     ## Parameterize Input space with θ (w conjecture that optimal soln always lies on bound of constraint)
     θu, θd = collect(-pi:0.05:pi), collect(-pi:0.05:pi);
@@ -458,23 +456,25 @@ function plot_game(system, pair_strats, pair_labels; p, t, p1_strats=[], p1_labe
     return game_plot
 end
 
-function plot_inputs(system, Is, itype; border=0.7)
+function plot_inputs(input_params, Is; title="Input Set", type="ball", res=0.01)
     """
     Function for plotting a trajectory of inputs and their constraints.
     """
-    M, C, C2, Q, Q2, a1, a2 = system
+    Q, c, r = input_params
 
-    if itype == "u"
-        P = Q; title = "U := {u' Q⁻¹ u ≤ 1}"
-    elseif itype == "d"
-        P = Q2; title = "D := {d' Q₂⁻¹ d ≤ 1}"
+    if type ∈ ["ball", "Ball", "L2"]
+        Ji = X -> diag((X .- c')' * inv(Q) * (X .- c'))/2 .- 0.5 * 1^2 # gives used r
+        # Ji = X -> diag((X .- c')' * inv(2r*Q) * (X .- c'))/2 .- 0.5 * 1^2 # gives intended r
+    elseif type ∈ ["box", "Box", "Linf"]
+        Ji = X -> norm.(eachcol(inv(Q) * (X .- c')), Inf) .- 2
+    else
+        error("$type not supported")
     end
 
-    u1g = collect(-border : 0.1 : border) .+ 1e-7; u2g = collect(-border : 0.1 : border) .+ 1e-7;
-    Ug = hcat(collect.(Iterators.product(u2g, u1g))...)[end:-1:1,:]
-    Jg = reshape(J(Ug, inv(P), cp), length(u1g), length(u2g))
+    Ug, ugis, _ = make_grid(1.25r, res, size(Q,1); return_all=true, shift=c)
+    Jg = reshape(Ji(Ug), length(ugis[1]), length(ugis[2]))'
 
-    input_plot = contour(u1g, u2g, Jg, color="black", colorbar=false, levels=-1e-5:1e-5:1e-5, title=title);
+    input_plot = contour(ugis[1], ugis[2], Jg, color="black", colorbar=false, levels=[0], lw=2, title=title);
 
     for key in sort(collect(keys(Is))); 
         scatter!(input_plot, Is[key][1,:], Is[key][2,:], label=key, alpha=0.5); 

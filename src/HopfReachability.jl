@@ -76,6 +76,7 @@ function Hopf_BRS(system, target, T;
     J, Jˢ, Jp = target
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
+    xigs = nothing
 
     ## System Data
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T = [], [], [], [], [], []
@@ -88,7 +89,7 @@ function Hopf_BRS(system, target, T;
 
     ## Grid Set Up
     if isnothing(Xg)
-        Xg = make_grid(grid_p, nx; shift=ϵ)
+        Xg, xigs, _ = make_grid(grid_p..., nx; shift=ϵ, return_all=true)
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # TODO: arbitrary atm, fix
@@ -219,7 +220,7 @@ function Hopf_BRS(system, target, T;
     min_ϕB⁺T = round.(minimum.(ϕB⁺T), sigdigits=sigdigits)
     max_ϕB⁺T = round.(maximum.(ϕB⁺T), sigdigits=sigdigits)
 
-    if plotting; plot_nice(T, (B⁺T, ϕB⁺T); Φ, simple_problem, zplot); end
+    if plotting; plot((B⁺T, ϕB⁺T); xigs); end
     if printing; println("TOTAL TIME: $pr_totaltime s"); end
     if printing; println("\nAt t = $(vcat(0., T)) over Xg,"); end
     if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
@@ -717,7 +718,7 @@ end
 
 ## Make Grid
 function make_grid(bd, res, nx; return_all=false, shift=0.)
-    lbs, ubs = typeof(bd) <: Tuple ? (typeof(bd[1]) <: Tuple ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
+    lbs, ubs = typeof(bd) <: Tuple || typeof(bd) <: Array ? (typeof(bd[1]) <: Tuple || typeof(bd[1]) <: Array ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
     xigs = typeof(shift) <: Number ? [collect(lbs[i] : res : ubs[i]) .+ shift for i in 1:nx] : [collect(lbs[i] : res : ubs[i]) .+ shift[i] for i in 1:nx]
     Xg = hcat(collect.(Iterators.product(xigs...))...) ## TODO : do this better
     output = return_all ? (Xg, xigs, (lbs, ubs)) : Xg
@@ -763,22 +764,24 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 end
 
 ## Contour Plot
-function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
-    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, 
+function contour(solution; value=true, xigs=nothing, grid=true, grid_p=nothing, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, BRS_on_value_lw=2,
     plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
     
     @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
-    @assert !(grid && isnothing(xigs)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
+    @assert !(grid && isnothing(xigs) && isnothing(grid_p)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
     labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:length(solution[1])-1]...) : labels
     colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
     plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
+    Xg, xigs, _ = isnothing(xigs) && grid ? make_grid(grid_p..., size(solution[1][1],1); return_all=true) : fill(nothing, 3)
+    xigs_ = isnothing(xigs) ? xigs : copy(xigs)
 
     vals = copy(solution[2])
     if !grid
         interp_grid_bds = isnothing(interp_grid_bds) ? [minimum(minimum.(solgi for solgi in solution[1])), maximum(maximum.(solgi for solgi in solution[1]))] : interp_grid_bds
-        Xg, xigs, _ = make_grid(interp_grid_bds, interp_res, size(solution[1][1], 1); return_all=true)
+        Xg, xigs_, _ = make_grid(interp_grid_bds, interp_res, size(solution[1][1], 1); return_all=true)
         for ti=1:length(solution[1])
-            vals[i] = evaluate(interpolate(interp_alg, solution[1][i], solution[2][i]), Xg)
+            vals[ti] = evaluate(interpolate(interp_alg, solution[1][ti], solution[2][ti]), Xg)
         end
     end
 
@@ -786,17 +789,17 @@ function contour(solution; value=true, xigs=nothing, grid=true, title="BRS", tit
     value_plot = value ? Plots.plot(title=title_value, camera=camera) : nothing
     
     for ti=1:length(solution[1]); 
-        Plots.contour!(BRS_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[2]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false)
+        Plots.contour!(BRS_plot, xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false)
         Plots.plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); # contour label workaround
     
-        if value; surface!(value_plot, xigs..., reshape(vals[ti], length(xigs[1]), length(xigs[2]))', color=colors[ti], alpha=value_alpha, colorbar=false); end
+        if value; surface!(value_plot, xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', color=colors[ti], alpha=value_alpha, colorbar=false); end
     
         if value && BRS_on_value
-            cl = levels(contours(xigs..., reshape(solution[2][ti], length(xigs[1]), length(xigs[2]))', [0]))[1]
+            cl = levels(contours(xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', [0]))[1]
             for line in lines(cl)
                 ys, xs = coordinates(line)
                 zs = 0 * xs
-                Plots.plot!(value_plot, xs, ys, zs, alpha=0.5, label="", lw=1, color=colors[ti])
+                Plots.plot!(value_plot, xs, ys, zs, alpha=0.5, label="", lw=BRS_on_value_lw, color=colors[ti])
             end
         end
     end
@@ -839,9 +842,10 @@ function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", ti
     return output
 end
 
-function plot(solution; interpolate=true, seriestype=:contour, kwargs...)
+function plot(solution; interpolate=true, seriestype=nothing, kwargs...)
+    seriestype = isnothing(seriestype) ? (interpolate ? :contour : :scatter) : seriestype
     @assert seriestype ∈ [:scatter, :contour] "Only contour and scatter are currently supported."
-    if interpolate || seriestype == :contour
+    if seriestype == :contour
         contour(solution; kwargs...)
     else
         scatter(solution; kwargs...)
@@ -1053,11 +1057,11 @@ function preH_ball(system, target, t; opt_p=nothing, admm=false, F_init=nothing,
     end
 
     ## Precomputing SVD for matrix sqrt
-    _, Σ,  VV  = svd(Q);
+    _, Σ, VV = svd(Q);
     _, Σ2, VV2 = svd(Q2);
     # G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
     # G2 = Diagonal(sqrt.(Σ2)) * VV2;
-    G  = Diagonal(Σ)  * VV; #TODO FIX & TEST
+    G = Diagonal(Σ) * VV; #TODO FIX & TEST
     G2 = Diagonal(Σ2) * VV2;
 
     ## Precomputing ADMM matrix

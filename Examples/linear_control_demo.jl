@@ -1,10 +1,7 @@
 
-using LinearAlgebra, Plots
-# plotlyjs()
-# using HopfReachability: Hopf_BRS, plot_nice, Hopf
-
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf, Hopf_minT, make_set_params, make_levelset_fs, make_grid
+using LinearAlgebra, Plots
 
 ## System & Game
 A, B₁, B₂ = [0. 1; -2 -3], [2 0; 0 1], [1 0; 0 1] # system
@@ -18,35 +15,9 @@ th, Th, Tf = 0.02, 0.2, 0.6
 T = collect(Th : Th : Tf);
 
 ## Elliptical Target: J(x) = 0 is the boundary of the target
-# Ap = diagm([1., 1.]) # dim x
-# cp = [0.; 0.] # dim x
-# r = 1.0
-# J(x::Vector, A, c) = ((x - c)' * inv(A) * (x - c))/2 - 0.5 * r^2 #don't need yet
-# Js(v::Vector, A, c) = (v' * A * v)/2 + c'v + 0.5 * r^2
-# J(x::Matrix, A, c) = diag((x .- c)' * inv(A) * (x .- c))/2 .- 0.5 * r^2
-# Js(v::Matrix, A, c) = diag(v' * A * v)/2 + (c'v)' .+ 0.5 * r^2 #don't need yet
-# target = (J, Js, (Ap, cp))
 center, radius = zero(A[:,1]), 1.
 J, Jˢ = make_levelset_fs(center, radius; type="ball")
 target = (J, Jˢ, (diagm(ones(2)), center, radius));
-
-## Point Target (Indicator Set)
-# ap = -1.
-# cp = [0.; 0.]
-# J(x::Vector, a, c) = x == c ? a : Inf
-# Js(v::Vector, a, c) = v'c - a
-# J(x::Matrix, a, c) = map(x -> x == c ? a : Inf, eachcol(x))
-# Js(v::Matrix, a, c) = v'c .- a
-# target = (J, Js, (ap, cp))
-
-## Affine Target
-# ap = [1.; 1.]
-# cp = 0.
-# J(x::Vector, a, c) = a'x - c #don't need yet
-# Js(v::Vector, a, c) = v == a ? c : 10
-# J(x::Matrix, a, c) = (a'x)' .- c
-# Js(v::Matrix, a, c) = map(v -> v == a ? c : 10, eachcol(v))
-# target = (J, Js, (ap, cp))
 
 ## Points to Solve
 bd, res, ϵ = 4, 0.1, .5e-7
@@ -57,18 +28,11 @@ vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 2, 1e-
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
 ### Solve the BRS to Validate our Controller
-solution, run_stats = Hopf_BRS(system, target, T;
-                                Xg,
-                                opt_method=Hopf_cd,
-                                th,
-                                opt_p=opt_p_cd,
-                                warm=false,
-                                check_all=true,
-                                printing=true);
+solution, run_stats = Hopf_BRS(system, target, T; Xg, opt_method=Hopf_cd, th, opt_p=opt_p_cd, warm=false, check_all=true, printing=true);
 XgT, ϕXgT = solution;
 
-plot(solution; xigs=xigs, seriestype=:contour)
-plot(solution; xigs=xigs, seriestype=:scatter)
+plot(solution; xigs=xigs, interpolate=true)
+plot(solution; interpolate=false)
 
 ## Find Boundary Pts of one BRS for Time of Interest
 Toi = 0.4
@@ -96,15 +60,15 @@ F, Fu, Fd = F ./ map(norm, eachcol(F))', Fu ./ map(norm, eachcol(Fu))', Fd ./ ma
 
 ## Plot
 scale = 0.35
-ocd_plot = quiver(Xg2[1,:], Xg2[2,:], quiver = 0.75 * scale .* (F[1,:],  F[2,:]),  label="",  color="blue", alpha=0.05, lw=2, dpi=300)
+ocd_plot = quiver(Xg2[1,:], Xg2[2,:], quiver = 0.75 * scale .* (F[1,:],  F[2,:]), label="", color="blue", alpha=0.05, lw=2, dpi=300)
 contour!(xigs..., reshape(ϕXgT[1], length(xigs[1]), length(xigs[1]))', levels=[0], label="", lw=2, color="black", colorbar=false)
 plot!([100, 100], [200, 200], lw=2, color="black", label="Target", xlims=(-bd,bd), ylims=(-bd,bd))
 contour!(xigs..., reshape(ϕXgT[Tix+1], length(xigs[1]), length(xigs[1]))', levels=[0], label="", lw=2, color="purple", colorbar=false)
 plot!([100, 100], [200, 200], lw=2, color="purple", label="BRS, t=-$(T[Tix])", xlims=(-bd,bd), ylims=(-bd,bd))
-quiver!(B[1,:], B[2,:], quiver = scale .* (Fu[1,:], Fu[2,:]), label="fu", color="green", lw=1.5, alpha=0.9)
-quiver!(B[1,:], B[2,:], quiver = scale .* (Fd[1,:], Fd[2,:]), label="fd", color="red", lw=1.5, alpha=0.9)
+quiver!(B[1,:], B[2,:], quiver = scale .* (Fu[1,:], Fu[2,:]), label="", color="green", lw=1.5, alpha=0.9)
+quiver!(B[1,:], B[2,:], quiver = scale .* (Fd[1,:], Fd[2,:]), label="", color="red", lw=1.5, alpha=0.9)
 scatter!(B[1,:], B[2,:], label="BRS pts", color="orange", alpha=1, markersize=2, markerstrokewidth=0)
-plot!([10, 11], [10, 11],  alpha=0.5, color="blue", label="Ax", lw=1.5)
-plot!([10, 11], [10, 11],  alpha=0.9, color="green", label="Buˢ", lw=1.5)
-plot!([10, 11], [10, 11],  alpha=0.9, color="red",   label="Cdˢ", lw=1.5)
+plot!([10, 11], [10, 11], alpha=0.5, color="blue", label="Ax", lw=1.5)
+plot!([10, 11], [10, 11], alpha=0.9, color="green", label="Buˢ", lw=1.5)
+plot!([10, 11], [10, 11], alpha=0.9, color="red",   label="Cdˢ", lw=1.5)
 plot!(title="Optimal Control and Disturbance in a Reach Game")
