@@ -1069,8 +1069,6 @@ function preH_ball(system, target, t; opt_p=nothing, admm=false, F_init=nothing,
     _, Σ2, VV2 = svd(Q2);
     G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
     G2 = Diagonal(sqrt.(Σ2)) * VV2;
-    # G = Diagonal(Σ/2) * VV; #TODO FIX & TEST
-    # G2 = Diagonal(Σ2/2) * VV2;
 
     ## Precomputing ADMM matrix
     F = admm ? inv(F) : F
@@ -1094,7 +1092,6 @@ function HJoc_ball(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
     G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2; # works with sqrt.(Σ) and Q = (0.5 * r)^2 * Q0
-    # G, G2 = Diagonal(Σ/2) * VV, Diagonal(Σ2/2) * VV2;
 
     uˢ = Q  != zero(Q)  ? sgn_p1 * inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' : zeros(nu)
     dˢ = Q2 != zero(Q2) && p2 ? sgn_p2 * (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(nd)

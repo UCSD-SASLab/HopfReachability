@@ -6,8 +6,8 @@ using LinearAlgebra, Plots
 
 ## System
 nx, nu, nd = 2, 2, 2
-A, B₁, B₂ = [0. 1; -2 -3], 0.5*[1 0; 0 1], 0.5*[2 0; 0 1] # system
-max_u, max_d, input_center, input_shapes = 0.3, 0.4, zeros(nu), "ball"
+A, B₁, B₂ = [0. 1; -2 -3], 0.5*[1 0; 0 1], 0.5*[1 0; 0 1] # system
+max_u, max_d, input_center, input_shapes = 1.0, 0.5, zeros(nu), "ball"
 Q₁, c₁ = make_set_params(input_center, max_u; type=input_shapes) 
 Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & 𝒟
 system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
@@ -45,7 +45,7 @@ plot(solution; grid_p, value_alpha=0.5)
 #   Test Control, Compare Solution of 1st step
 #   ==========================================
 
-x0 = [-2.3, 2.6]; steps = 1; 
+x0 = [2.5, 1.5]; steps = 1; 
 
 ## Controllers
 ctrls = Dict("Hopf" => x -> Hopf_minT(system, target, x; input_shapes, time_p = (0.05, 0.2, 2.0)),
@@ -66,9 +66,8 @@ game_plot = plot_game(system, pair_strats, pair_labels; p=dϕdz, t=Tˢ, p1_strat
 #   Compare Hopf Against Random Disturbance
 #   =======================================
 
-x0 = [-2.3, 2.6]; steps = 34; 
-
 hopf_ctrl = Dict("Hopf" => x -> Hopf_minT(system, target, x; input_shapes, time_p = (0.05, 0.4, 2.0)))
+steps = Int(ceil(hopf_ctrl["Hopf"](x0)[3] / th)) + 1;
 
 Xs, Us, Ds = roll_out(system, target, hopf_ctrl, x0, steps; printing=false);
 
