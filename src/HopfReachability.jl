@@ -744,14 +744,6 @@ function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
         Q = r * Q0
     elseif type ∈ ["ball", "Ball", "l2", "L2"]
         Q = r^2 * Q0 # works
-        # Q = (0.5 * r)^2 * Q0 # works
-        # Q = Q0 / r^2
-        # Q = Q0 / r
-        # Q = r * Q0 # way too big
-        # Q = (0.5/sqrt(2)) * r^2 * Q0 # closest
-        # Q = r^2 * Q0 # same as 0.5r..?
-        # Q = 0.5 * r^2 * Q0 # closer
-        # Q = 0.5 * r * Q0 # worked with old Σ, but too big w/ sqrt.(Σ)
     else
         error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
     end
@@ -772,7 +764,7 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 end
 
 ## Contour Plot
-function contour(solution; value=true, xigs=nothing, grid=true, grid_p=nothing, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+function contour(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=nothing, grid=true, grid_p=nothing, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
     value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, BRS_on_value_lw=2,
     plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
     
@@ -823,7 +815,7 @@ function contour(solution; value=true, xigs=nothing, grid=true, grid_p=nothing, 
 end
 
 ## Scatter Plot of BRS
-function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+function scatter(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
     value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, 
     plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
     
@@ -850,7 +842,7 @@ function scatter(solution; value=true, xigs=nothing, grid=false, title="BRS", ti
     return output
 end
 
-function plot(solution; interpolate=true, seriestype=nothing, kwargs...)
+function plot(solution::Tuple{Vector{Any}, Vector{Any}}; interpolate=true, seriestype=nothing, kwargs...)
     seriestype = isnothing(seriestype) ? (interpolate ? :contour : :scatter) : seriestype
     @assert seriestype ∈ [:scatter, :contour] "Only contour and scatter are currently supported."
     if seriestype == :contour
