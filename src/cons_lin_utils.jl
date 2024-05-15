@@ -1,7 +1,7 @@
 
-using LinearAlgebra, Polynomials, DifferentialEquations, ForwardDiff
+using LinearAlgebra, Polynomials, OrdinaryDiffEq, ForwardDiff
 using ReachabilityAnalysis, Polyhedra
-using Plots, LaTeXStrings
+# using Plots, LaTeXStrings
 
 # plotlyjs()
 
@@ -19,7 +19,7 @@ function solve_BRZ_fp(f, X0, U, D, t; zono_over="UD", alg=TMJets(; maxsteps=1_00
     return overapproximate(sol, Zonotope)
 end
 
-## Backwards integrate x0 to t (w/ u/d state fb fn) via DifferentialEquations.jl
+## Backwards integrate x0 to t (w/ u/d state fb fn) via OrdinaryDiffEq.jl
 function roll_back(f, x0, uxt, dxt, t; th=0.05, alg=Tsit5())
     
     nx, nt = length(x0), Int(round(t / th))
