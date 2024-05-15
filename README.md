@@ -61,7 +61,7 @@ Alone, the Hopf formula is only guaranteed to yield the correct value [1] when t
 
 Here we solve the Backwards Reachable Sets for a simple, time-varying system with an ball target (L2) and inputs confined to boxes (Linf). Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
 
-```
+```julia
 include(pwd() * "/src/HopfReachability.jl");
 using .HopfReachability: Hopf_BRS, plot_nice, make_grid, make_levelset_fs, make_set_params
 using LinearAlgebra, Plots, OrdinaryDiffEq
