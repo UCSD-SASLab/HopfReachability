@@ -94,16 +94,14 @@ for j=1:7
     lifted_kwargs_pol = Dict(:Ψ => x->Ψpol(x; d=models["pol"][j]["degree"]), :lin_mat_fs=>model_mats(j, "pol"), :linear_graph=>zeros(models["pol"][j]["nk"]), :solve_dims=>collect(1:models["pol"][j]["nk"]), :error_method=>Lifted_Error_DiscreteAppx)    
     δ̃ˢ_pol, _, _, BRZ_pol, _ = apri_δˢ(vanderpol!, 𝒯target, inputs, t; lifted_kwargs_pol..., polyfit=false);
     models["pol"][j]["δˢ"] = δ̃ˢ_pol
-    # plot!(error_plot_pol, dt, map(norm, eachcol(δ̃ˢ_pol)))
-    plot!(error_plot_pol, dt, δ̃ˢ_pol[2,:], label="(nk $(models["pol"][j]["nk"]), degree $(models["pol"][j]["degree"]))", lw=2)
+    plot!(error_plot_pol, dt, δ̃ˢ_pol[2,:], label="(nk $(models["pol"][j]["nk"]), degree $(models["pol"][j]["degree"]))", lw=2) # plot!(error_plot_pol, dt, map(norm, eachcol(δ̃ˢ_pol)))
 end
 
 for j=1:7 #3
     lifted_kwargs_rbf = Dict(:Ψ => x->Ψrbf(x; cx=models["rbf"][j]["cx"], kw=models["rbf"][j]["kw"]), :lin_mat_fs=>model_mats(j, "rbf"), :linear_graph=>zeros(models["rbf"][j]["nk"]), :solve_dims=>collect(1:models["rbf"][j]["nk"]), :error_method=>Lifted_Error_DiscreteAppx)
     δ̃ˢ_rbf, _, _, BRZ_rbf, _ = apri_δˢ(vanderpol!, 𝒯target, inputs, t; lifted_kwargs_rbf..., polyfit=false);
     models["rbf"][j]["δˢ"] = δ̃ˢ_rbf
-    # plot!(error_plot_rbf, dt, map(norm, eachcol(δ̃ˢ_rbf)))
-    plot!(error_plot_rbf, dt, δ̃ˢ_rbf[2,:], label="(nk $(models["rbf"][j]["nk"]), centers $(length(models["rbf"][j]["cx"])))", lw=2)
+    plot!(error_plot_rbf, dt, δ̃ˢ_rbf[2,:], label="(nk $(models["rbf"][j]["nk"]), centers $(length(models["rbf"][j]["cx"])))", lw=2) # plot!(error_plot_rbf, dt, map(norm, eachcol(δ̃ˢ_rbf)))
 end
 
 plot(BRZ_plot, error_plot_pol, error_plot_rbf, layout=(1,3), plottitle="", size=(1600,500))
@@ -179,7 +177,6 @@ plot(BRS_plots..., layout=(1,4), size=(1600,500))
 
 th=0.05; Th=0.25
 T = collect(Th:Th:1.0)
-solve_cd, solve_admm = true, false
 res2 = 100
 Xg, _, _, xig2 = hjr_init(c𝒯, Q𝒯, 1; shape="ball", lb=(-3,-4), ub=(3,4), res=res2);
 
@@ -191,15 +188,15 @@ for key in ["pol", "rbf"]
     for j = 1:4
 
         ## Augmented System
-        Ψj = key == "pol" ? x -> Ψpol(x; d=models["pol"][j]["degree"]) : x -> Ψrbf(x; cx=models["rbf"][j]["cx"], kw=models["rbf"][j]["kw"])
         A, B₁, B₂, c = model_mats(j, key); 
         E_s(s) = diagm(δˢ_dc(s, models[key][j]["δˢ"], BRZ)) # in forward time
-
         lifted_system_err = (A, B₁, B₂, Q₁, c₁, 0*Q₁, c₁, c, E_s);
 
+        ## Points To Solve
+        Ψj = key == "pol" ? x -> Ψpol(x; d=models["pol"][j]["degree"]) : x -> Ψrbf(x; cx=models["rbf"][j]["cx"], kw=models["rbf"][j]["kw"]) 
         Gg_man = hcat(Ψj.(eachcol(Xg))...)
 
-        ## Augmented Target Params (Influential)
+        ## Augmented Target
         η = key == "pol" ? 10 : 10; # η = key == "pol" ? 20 : 1.5;
         r_aug = key == "pol" ? 0.9r : 0.9r # r_aug = key == "pol" ? 0.8r : r
         c𝒯_aug = Ψj(c𝒯)
@@ -209,21 +206,10 @@ for key in ["pol", "rbf"]
         gr(); contour!(target_check_plots[key], xig2..., reshape(lifted_target[1](Gg_man), res2, res2)', levels=[0], color=palette(:default)[j+1], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz)
         
         ## Solve
-        if solve_cd
-            # vh = 0.01; L = 2; tol = 1e-3; step_lim = 400; re_inits = 5; max_runs = 20; max_its = 5000
-            vh = 0.01; L = 20; tol = 1e-3; step_lim = 200; re_inits = 5; max_runs = 20; max_its = 1000 # working
-
-            opt_p_cd = (vh, L, tol, step_lim, re_inits, max_runs, max_its)
-            results_avoid_cd, _ = Hopf_BRS(lifted_system_err, lifted_target, T; th, Xg=Gg_man, error=true, game="avoid", opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true, warm_pattern="previous");
-            models[key][j]["results_avoid_cd"] = results_avoid_cd
-        elseif solve_admm
-            # opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.005, 10, 1e-5, 100, 1, 4, 100), 1, 1, 3) # Duffing Work (15D)
-            # opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.01, 1e2, 1e-4, 500, 3, 9, 1000), 1, 1, 3) # MultiDubins (15D)
-            # opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (0.01, 1e1, 1e-4, 100, 5, 10, 1000), 1, 1, 3)
-            opt_p_admm_cd = ((1e-0, 1e-0, 1e-5, 3), (vh, L, tol, step_lim, 2, 5, max_its), 1, 1, 3)
-            results_avoid_admm, _ = Hopf_BRS(lifted_system_err, lifted_target, T; th, Xg=Gg_man, error=true, game="avoid", opt_method=Hopf_admm_cd, opt_p=opt_p_admm_cd, warm=true, check_all=true, printing=true, warm_pattern="previous");
-            models[key][j]["results_avoid_admm"] = results_avoid_admm
-        end
+        vh = 0.01; L = 20; tol = 1e-3; step_lim = 200; re_inits = 5; max_runs = 20; max_its = 1000
+        opt_p_cd = (vh, L, tol, step_lim, re_inits, max_runs, max_its)
+        results_avoid_cd, _ = Hopf_BRS(lifted_system_err, lifted_target, T; th, Xg=Gg_man, error=true, game="avoid", opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true, warm_pattern="previous");
+        models[key][j]["results_avoid_cd"] = results_avoid_cd
     end
 end
 
@@ -235,7 +221,6 @@ contour!(xig1..., reshape(ϕXgT_DP_dynamics[gix][1], res, res)', levels=[0], col
 contour!(xig1..., reshape(ϕXgT_DP_dynamics[gix][4], res, res)', levels=[0], lw=2.5, color=:blue, colorbar=false, xlims=xlimz, ylims=ylimz, label="True")
 contour!(xig1..., reshape(ϕXgT_DP_dynamics_linear[gix][4], res, res)', levels=[0], lw=2.5, color=palette(:default)[1], colorbar=false, xlims=xlimz, ylims=ylimz, label="TS")
 for j=1:4; contour!(xig2..., reshape(models[key][j]["results_avoid_cd"][2][end], res2, res2)', color=palette(:default)[j+1], levels=[0], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz, label="(nk $(models["pol"][j]["nk"]), degree $(models["pol"][j]["degree"]))"); end
-if solve_admm; for j=1:7; contour!(xig2..., reshape(models[key][j]["results_avoid_admm"][2][end], res2, res2)', levels=[0], color=colors[j], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz); end; end
 display(BRS_plot_pol)
 
 BRS_plot_rbf = plot(); key = "rbf"
@@ -243,7 +228,6 @@ contour!(xig1..., reshape(ϕXgT_DP_dynamics[gix][1], res, res)', levels=[0], col
 contour!(xig1..., reshape(ϕXgT_DP_dynamics[gix][4], res, res)', levels=[0], lw=2.5, color=:blue, colorbar=false, xlims=xlimz, ylims=ylimz, label="True")
 contour!(xig1..., reshape(ϕXgT_DP_dynamics_linear[gix][4], res, res)', levels=[0], lw=2.5, color=palette(:default)[1], colorbar=false, xlims=xlimz, ylims=ylimz, label="TS")
 for j=1:3; contour!(xig2..., reshape(models[key][j]["results_avoid_cd"][2][end], res2, res2)', color=palette(:default)[j+1], levels=[0], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz, label="(nk $(models["rbf"][j]["nk"]), centers $(length(models["rbf"][j]["cx"])))"); end
-if solve_admm; for j=1:7; contour!(xig2..., reshape(models[key][j]["results_avoid_admm"][2][end], res2, res2)', levels=[0], color=colors[j], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz); end; end
 display(BRS_plot_rbf)
 
 plot(BRS_plot_pol, BRS_plot_rbf, legend=true)
