@@ -51,16 +51,15 @@ Alone, the Hopf formula is only guaranteed to yield the correct value [1] when t
 
 ## Code Structure
 
-- `Hopf_BRS`: fed a system, target and time array (optionally grid and optimization parameters) and makes a grid and performs optimization for points in the grid near the boundary of the target by calling,
-- `Hopf_cd`/`Hopf_admm`: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
-- `Hopf`: evaluates the value of the Hopf formula for a given value of x and v.
+- `Hopf_BRS`: fed a `system`, `target` and time array and an array of states (or can make a grid for you) and solves the value at those states and optimal control
+- `Hopf_cd`/`Hopf_admm`: do the optimization
+- `Hopf`: gives the value of the Hopf objective for a given value of x and p.
 - `Hopf_minT`: finds the minimum time such that a given state is reachable and returns the optimal control
-- `plot_BRS`: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
-- `preH`, `intH`, `HJoc`: utility fn's for precomputing, integrating with precomputed data, solving the optimal control respectivley
+- `preH`, `intH`, `HJoc`: utility fn's for precomputing the Hamiltonian, integrating the Hamiltonian, and solving the optimal control respectivley
 
 ## Demo
 
-Here we solve the Backwards Reachable Sets for a simple, time-varying systems with an ball target (L2) and inputs confined to boxes (Linf). Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
+Here we solve the Backwards Reachable Sets for a simple, time-varying system with an ball target (L2) and inputs confined to boxes (Linf). Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
 
 ```
 include(pwd() * "/src/HopfReachability.jl");
@@ -79,7 +78,7 @@ max_u, max_d, input_center, input_shapes = 0.75, 0.25, zeros(2), "ball"
 Q₁, c₁ = make_set_params(input_center, max_u; type=input_shapes) # control set 
 Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # disturbance set
 
-game = "reach"
+game = "reach" # try 'avoid' for an avoid game
 system_f = (Af, B₁, B₂, Q₁, c₁, Q₂, c₂)
 
 ## Target
