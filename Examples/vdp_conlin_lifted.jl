@@ -63,6 +63,7 @@ inputs = ((Q₁, c₁), (Q₂, c₁))
 
 μ = 1.0
 function vanderpol!(dx, x, p, t)
+    # ReachabilityAnalysis.jl model style
     dx[1] = x[2]
     dx[2] = μ * (1.0 - x[1]^2) * x[2] - x[1] + x[3] + x[4]
     dx[3] = zero(x[3]) #control

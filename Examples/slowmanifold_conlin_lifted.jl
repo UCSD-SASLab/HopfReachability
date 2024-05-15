@@ -45,6 +45,7 @@ inputs = ((Q₁, c), (Q₂, c))
 # D = Hyperrectangle(; low = c - diag(inv(Q₂)), high = c + diag(inv(Q₂)))
 
 function slowmanifold!(dx, x, p, t)
+    # ReachabilityAnalysis.jl model style
     dx[1] = μ * x[1] + x[3] + x[5]
     dx[2] = λ * (x[2] - x[1]^2) + x[4] + x[6]
     dx[3] = zero(x[3]) #control
@@ -55,6 +56,7 @@ function slowmanifold!(dx, x, p, t)
 end
 
 function slowmanifold_aug!(dx, x, p, t)
+    # ReachabilityAnalysis.jl model style
     dx[1] = μ * x[1] + x[4] + x[6]
     dx[2] = λ * (x[2] - x[3]) + x[5] + x[7]
     dx[3] = 2 * (μ * x[3] + x[1] * (x[4] + x[6])) #augmented

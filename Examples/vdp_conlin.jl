@@ -15,7 +15,8 @@ inputs, 𝒯target = ((Q₁,c),(Q₂,c)), (0,0,(Q𝒯,c𝒯))
 nx = length(c𝒯);
  
 μ = 1.0
-function vanderpol!(dx, x, p, t)
+function vanderpol!(dx, x, p, t) 
+    # ReachabilityAnalysis.jl model style
     dx[1] = x[2]
     dx[2] = μ * (1.0 - x[1]^2) * x[2] - x[1] + x[3] + x[4]
     dx[3] = zero(x[3]) #control
