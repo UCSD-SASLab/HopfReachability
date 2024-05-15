@@ -1,12 +1,11 @@
 module HopfReachability
 
-using LinearAlgebra, StatsBase, DifferentialEquations
+using LinearAlgebra 
+using StatsBase 
 using TickTock, Suppressor 
-# using LaTeXStrings
-# using Plots 
-# using ScatteredInterpolation, ImageFiltering
-# using PlotlyJS
-# plotlyjs()
+using Plots, ScatteredInterpolation
+import Contour: contours, levels, level, lines, coordinates
+import Plots: plot, scatter, contour
 
 ##################################################################################################
 ##################################################################################################
@@ -23,19 +22,19 @@ function Hopf(system, target, tbH, z, v; p2=true, game="reach")
     J, Jˢ, Jp = target
     intH, Hdata = tbH
 
-    return Jˢ(v, Jp...) - z'v + intH(system, Hdata, v; p2, game);
+    return Jˢ(v) - z'v + intH(system, Hdata, v; p2, game);
 end
 
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
 function Hopf_BRS(system, target, T;
-                  opt_method=Hopf_cd, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
-                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, opt_p=nothing, warm=false, warm_pattern="previous",
+                  opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
+                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
 
     if opt_method == Hopf_cd
-        # Faster : (0.01, 2, ϵ, 100, 5, 10, 400)
-        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p
+        # opt_p = isnothing(opt_p) ? (0.01, 2, ϵ, 100, 5, 10, 400) : opt_p # Faster
+        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p # Safer
         admm = false
     elseif opt_method == Hopf_admm
         opt_p = isnothing(opt_p) ? (1e-1, 1e-2, 1e-5, 100) : opt_p 
@@ -45,12 +44,12 @@ function Hopf_BRS(system, target, T;
         admm = true
     end
 
-    ## Initialize
+    ## System
     simple_problem = !moving_grid && !moving_target
-    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
-                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+    preH, intH, HJoc = input_shapes ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (input_shapes ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
                       (preH, intH, HJoc))
-    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces inputshape to be box atm
+    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces input_shapes to be box atm
     
     if printing; 
         pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
@@ -61,7 +60,7 @@ function Hopf_BRS(system, target, T;
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
-        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {|| (u-c₁)ᵗ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {|| (d-c₂)ᵗ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
+        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {||(u-c₁)ᵀ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {||(d-c₂)ᵀ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
         pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
         
         println("\nGiven,")
@@ -70,13 +69,16 @@ function Hopf_BRS(system, target, T;
         println("\n  $pr_u_bds, $pr_d_bds$pr_error_bds")
         println("\n  for x ∈ ℝ^{$pr_x_dim}, u ∈ ℝ^{$pr_u_dim}, d ∈ ℝ^{$pr_d_dim}$pr_error_dim")
     end
-    system = length(system) == 7 ? (system..., zeros(size(system[1],1))) : system
-
+    
+    nx = typeof(system[1]) <: Function ? size(system[1](0.),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
+    system = length(system) == 7 ? (system..., zeros(nx)) : system
+    
     J, Jˢ, Jp = target
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
+    xigs = nothing
 
-    ## Initialize Data
+    ## System Data
     index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T = [], [], [], [], [], []
     averagetimes, pointstocheck, N, last_bi = [], [], 0, 1
     opt_data = opt_tracking ? [] : nothing
@@ -84,15 +86,10 @@ function Hopf_BRS(system, target, T;
     ## Precomputation
     if printing; println("\nPrecomputation, ..."); end
     Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
-    nx = size(Hmats[1])[2]
 
     ## Grid Set Up
     if isnothing(Xg)
-        bd, N = grid_p
-        lbs, ubs = typeof(bd) <: Tuple ? (typeof(bd[1]) <: Tuple ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
-        xigs = [collect(lbs[i] : 1/N : ubs[i]) .+ ϵ for i in 1:nx]
-        Xg = hcat(collect.(Iterators.product(xigs...))...)
-        #takes a while in REPL, but not when compiled... ## TODO : do this better
+        Xg, xigs, _ = make_grid(grid_p..., nx; shift=ϵ, return_all=true)
     elseif moving_grid
         # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
         N = [10 for i in eachindex(Xg)] # TODO: arbitrary atm, fix
@@ -102,7 +99,7 @@ function Hopf_BRS(system, target, T;
     if simple_problem
         
         @suppress begin; tick(); end # timing
-        ϕX = J(Xg, Q𝒯, c𝒯)
+        ϕX = J(Xg)
         push!(averagetimes, tok() / length(ϕX)) # initial grid eval time
 
         if check_all
@@ -138,7 +135,8 @@ function Hopf_BRS(system, target, T;
             Ni = moving_grid ? N[Tix] : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            ϕX = J(Xgi, Ai, ci)
+            J, Jˢ = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
+            ϕX = J(Xgi)
             if check_all
                 B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
             else
@@ -222,23 +220,23 @@ function Hopf_BRS(system, target, T;
     min_ϕB⁺T = round.(minimum.(ϕB⁺T), sigdigits=sigdigits)
     max_ϕB⁺T = round.(maximum.(ϕB⁺T), sigdigits=sigdigits)
 
-    if plotting; plot_BRS(T, B⁺T, ϕB⁺T; Φ, simple_problem, zplot); end
+    if plotting; plot((B⁺T, ϕB⁺T); xigs); end
     if printing; println("TOTAL TIME: $pr_totaltime s"); end
     if printing; println("\nAt t = $(vcat(0., T)) over Xg,"); end
     if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
-    if printing; println("  MEAN TIME: $pr_averagetimes s"); end
+    if printing; println("  MEAN TIME: $pr_averagetimes s/pt"); end
     if printing; println("  MIN VALUE: $min_ϕB⁺T"); end
     if printing; println("  MAX VALUE: $max_ϕB⁺T \n"); end
     run_stats = (totaltime, pointstocheck, averagetimes)
 
-    ## Return arrays of B⁺ over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
-    # if moving problem, target inserted at each Ti (2 * length(T) arrays)
+    ## Return arrays of B⁺ (near-boundary or all pts) over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
+    # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
     return (B⁺T, ϕB⁺T), run_stats, opt_data
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
 function Hopf_minT(system, target, x; 
-                  opt_method=Hopf_cd, inputshape=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false,
+                  opt_method=Hopf_cd, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false,
                   T_init=nothing, v_init_=nothing, Φ=nothing,
                   time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
                   refine=0.5, refines=2, depth_counter=0,
@@ -257,10 +255,10 @@ function Hopf_minT(system, target, x;
         admm = true
     end
 
-    preH, intH, HJoc = inputshape ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
-                      (inputshape ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+    preH, intH, HJoc = input_shapes ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (input_shapes ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
                       (preH, intH, HJoc))
-    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces inputshape to be box atm
+    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces input_shapes to be box atm
     
     if printing && depth_counter == 0; 
         pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
@@ -271,7 +269,7 @@ function Hopf_minT(system, target, x;
         
         pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
         pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
-        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {|| (u-c₁)ᵗ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {|| (d-c₂)ᵗ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
+        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {||(u-c₁)ᵀ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {||(d-c₂)ᵀ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
         pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
         
         println("\nGiven,")
@@ -290,7 +288,7 @@ function Hopf_minT(system, target, x;
     uˢ, dˢ, Tˢ, ϕ, dϕdz = 0, 0, 0, 0, 0
     t = isnothing(T_init) ? collect(th: th: Th) : collect(th: th: T_init)
 
-    ## Initialize ϕs
+    ## System ϕs
     ϕ, dϕdz = Inf, 0
     v_init = isnothing(v_init_) ? nothing : copy(v_init_)
 
@@ -407,7 +405,7 @@ end
 #     th, Th, maxT = time_p
 #     t = isnothing(T_init) ? collect(th: th: maxT) : collect(th: th: T_init) # Bisection
 
-#     ## Initialize ϕs
+#     ## System ϕs
 #     ϕ, dϕdz = Inf, 0
 #     v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
 
@@ -554,7 +552,7 @@ end
 ## Proximal Splitting Algorithm for optimizing the Hopf Cost at point z (vectorized)
 function Hopf_admm(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=length(z))
 
-    ## Initialize
+    ## System
     Q, Q2 = system[4], system[6]
     ρ, ρ2, tol, max_its = opt_p
     Hmats, tix, th = tbH[2]
@@ -718,6 +716,40 @@ end
 ##################################################################################################
 ##################################################################################################
 
+## Make Grid
+function make_grid(bd, res, nx; return_all=false, shift=0.)
+    lbs, ubs = typeof(bd) <: Tuple || typeof(bd) <: Array ? (typeof(bd[1]) <: Tuple || typeof(bd[1]) <: Array ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
+    xigs = typeof(shift) <: Number ? [collect(lbs[i] : res : ubs[i]) .+ shift for i in 1:nx] : [collect(lbs[i] : res : ubs[i]) .+ shift[i] for i in 1:nx]
+    Xg = hcat(collect.(Iterators.product(xigs...))...) ## TODO : do this better
+    output = return_all ? (Xg, xigs, (lbs, ubs)) : Xg
+    return output
+end
+
+## Make Target
+function make_levelset_fs(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
+    if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2"]
+        J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
+        Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
+        J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
+        Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
+    else
+        error("$type not supported yet") # TODO: l1, linf 
+    end
+    return J, Jˢ
+end
+
+## Make Parameters for a Set (for the inputs or target)
+function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
+    if type ∈ ["box", "Box", "linf", "Linf"]
+        Q = r * Q0
+    elseif type ∈ ["ball", "Ball", "l2", "L2"]
+        Q = r^2 * Q0 # works
+    else
+        error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
+    end
+    return Q, reshape(c, 1, length(c))
+end
+
 ## Find points near boundary ∂ of f(z) = 0
 function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
 
@@ -731,31 +763,123 @@ function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
     return findall(ind[:] .> 0); # index of XY near ∂ID
 end
 
-## Plots BRS over T in X and Z space
-function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
-    zplot=false, interpolate=false, inter_method=Polyharmonic(), pal_colors=["red", "blue"], alpha=0.5, 
-    title=nothing, value_fn=false, nx=size(B⁺T[1])[1], xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
+## Contour Plot
+function contour(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=nothing, grid=true, grid_p=nothing, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, BRS_on_value_lw=2,
+    plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
+    
+    @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
+    @assert !(grid && isnothing(xigs) && isnothing(grid_p)) "If plotting a solution on a grid, insert the discretized axes xig (used to make Xg)."
+    labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:length(solution[1])-1]...) : labels
+    colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+    plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
+    Xg, xigs, _ = grid && isnothing(xigs) ? make_grid(grid_p..., size(solution[1][1],1); return_all=true) : (nothing, xigs, nothing)
+    xigs_ = isnothing(xigs) ? xigs : copy(xigs)
 
+    vals = copy(solution[2])
+    if !grid
+        interp_grid_bds = isnothing(interp_grid_bds) ? [minimum(minimum.(solgi for solgi in solution[1])), maximum(maximum.(solgi for solgi in solution[1]))] : interp_grid_bds
+        Xg, xigs_, _ = make_grid(interp_grid_bds, interp_res, size(solution[1][1], 1); return_all=true)
+        for ti=1:length(solution[1])
+            vals[ti] = evaluate(interpolate(interp_alg, solution[1][ti], solution[2][ti]), Xg)
+        end
+    end
+
+    BRS_plot = Plots.plot(title=title)
+    value_plot = value ? Plots.plot(title=title_value, camera=camera) : nothing
+    
+    for ti=1:length(solution[1]); 
+        Plots.contour!(BRS_plot, xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', levels=[0], color=colors[ti], lw=lw, alpha=alpha, colorbar=false)
+        Plots.plot!(BRS_plot, [1e5, 2e5], [1e5, 2e5], color=colors[ti], lw=lw, alpha=alpha, label=labels[ti], xlims=xlims(BRS_plot), ylims=ylims(BRS_plot)); # contour label workaround
+    
+        if value; surface!(value_plot, xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', color=colors[ti], alpha=value_alpha, colorbar=false); end
+    
+        if value && BRS_on_value
+            cl = levels(contours(xigs_..., reshape(vals[ti], length(xigs_[1]), length(xigs_[2]))', [0]))[1]
+            for line in lines(cl)
+                ys, xs = coordinates(line)
+                zs = 0 * xs
+                Plots.plot!(value_plot, xs, ys, zs, alpha=0.5, label="", lw=BRS_on_value_lw, color=colors[ti])
+            end
+        end
+    end
+
+    # FIXME : plot is mishandling the kwargs? ERROR: "Cannot convert Pair{Symbol, Tuple{Int64, Int64}} to series data for plotting"
+    # plot!(BRS_plot, kwargs...)
+    # if value; plot!(value_plot, kwargs...); end
+    # println(kwargs); println(kwargs...)
+
+    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
+    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
+    return output
+end
+
+## Scatter Plot of BRS
+function scatter(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=nothing, grid=false, title="BRS", title_value="Value", labels=nothing, color_range=["red", "blue"], alpha=0.9, 
+    value_alpha=0.2, lw=2, ϵs=0.1, markersize=2, interp_alg=Polyharmonic(), interp_grid_bds=nothing, interp_res=0.1, camera=(50,30), BRS_on_value=true, 
+    plot_size=nothing, legend=:bottomleft, dpi=300, kwargs...)
+    
+    @assert size(solution[1][1],1) < 3 "For 3 dimensions, use plot_nice(). Instead, you could consider projection into 2 dimensions."
+    labels = isnothing(labels) ? vcat("Target", ["t$i" for i=1:(length(solution[1])-1)]...) : labels
+    colors = vcat(:black, palette(color_range, length(solution[1])-1)...)
+    plot_size = isnothing(plot_size) ? (value ? (800,400) : (400,400)) : plot_size
+
+    BRS_plot = plot(title=title)
+    value_plot = value ? plot(title=title_value, camera=camera) : nothing
+    
+    for ti=1:length(solution[1]);
+        b = solution[1][ti][:, abs.(solution[2][ti]) .< ϵs] 
+        xlims = [minimum(minimum.(solgi[1,:] for solgi in solution[1])), maximum(maximum.(solgi[1,:] for solgi in solution[1]))]
+        ylims = [minimum(minimum.(solgi[2,:] for solgi in solution[1])), maximum(maximum.(solgi[2,:] for solgi in solution[1]))]
+        Plots.scatter!(BRS_plot, collect(eachrow(b))..., color=colors[ti], label=labels[ti], alpha=alpha, markersize=markersize, markerstrokewidth=0., xlims=xlims, ylims=ylims);
+        
+        if value && BRS_on_value; Plots.scatter!(value_plot, b[1,:], b[2,:], -0*ones(length(b[1,:])), color=colors[ti], label="", alpha=0.5, markersize=markersize, markerstrokewidth=0.); end
+    end
+    if value; for ti=1:length(solution[1]); Plots.scatter!(value_plot, solution[1][ti][1,:], solution[1][ti][2,:], solution[2][ti], color=colors[ti], label="", alpha=value_alpha, markersize=markersize, markerstrokewidth=0.); end; end
+
+    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
+    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
+    return output
+end
+
+function plot(solution::Tuple{Vector{Any}, Vector{Any}}; interpolate=true, seriestype=nothing, kwargs...)
+    seriestype = isnothing(seriestype) ? (interpolate ? :contour : :scatter) : seriestype
+    @assert seriestype ∈ [:scatter, :contour] "Only contour and scatter are currently supported."
+    if seriestype == :contour
+        contour(solution; kwargs...)
+    else
+        scatter(solution; kwargs...)
+    end
+end
+
+## Contour or Scatter Plot of BRS using plotly for interactive 3d plots: surfaces & volumes (needs https://plotly.com/julia/getting-started/)
+function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc = 1e-5, cres = 0.1, 
+    zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, interp_alg=ScatteredInterpolation.Polyharmonic(),
+    title=nothing, value_fn=false, xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
+
+    B⁺T, ϕB⁺T = solution
+    nx=size(B⁺T[1])[1]
+    if interpolate; @assert (isdefined(Main, Symbol("PlotlyJS"))) "Load PlotlyJS.jl for isosurfaces (`using PlotlyJS`)."; end
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
     if isnothing(base_plot)
-        Xplot = isnothing(title) ? Plots.plot(title="BRS: ϕ(X, T) = 0") : Plots.plot(title=title)
+        Xplot = isnothing(title) ? Main.Plots.plot(title="BRS") : Main.Plots.plot(title=title)
     else
         Xplot = base_plot
     end
-    if zplot; Zplot = Plots.plot(title="BRS: ϕ(Z, T) = 0"); end
+    if zplot; Zplot = Main.Plots.plot(title="BRS"); end
 
     plots = zplot ? [Xplot, Zplot] : [Xplot]
-    if value_fn; vfn_plots = zplot ? [Plots.plot(title="Value: ϕ(X, T)"), Plots.plot(title="Value: ϕ(Z, T)")] : [Plots.plot(title="Value: ϕ(X, T)")]; end
+    if value_fn; vfn_plots = zplot ? [Main.Plots.plot(title="Value"), Main.Plots.plot(title="Value")] : [Main.Plots.plot(title="Value")]; end
 
     B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
     
-    ϕlabels = "ϕ(⋅,-" .* string.(T) .* ")"
-    Jlabels = "J(⋅, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1])) .* ")"
+    ϕlabels = "t=" .* string.(-T)
+    Jlabels = "Target, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1]))
     labels = collect(Iterators.flatten(zip(Jlabels, ϕlabels))) # 2 * length(T)
 
-    Tcolors = length(T) > 1 ? palette(pal_colors, length(T)) : palette([pal_colors[2]], 2)
-    B0colors = length(T) > 1 ? palette(["black", "gray"], length(T)) : palette(["black"], 2)
+    Tcolors = length(T) > 1 ? Main.Plots.palette(pal_colors, length(T)) : Main.Plots.palette([pal_colors[2]], 2)
+    B0colors = length(T) > 1 ? Main.Plots.palette(["black", "gray"], length(T)) : Main.Plots.palette(["black"], 2)
     plot_colors = collect(Iterators.flatten(zip(B0colors, Tcolors)))
 
     ## Zipping Target to Plot Variation in Z-space over Time (already done in moving problems)
@@ -766,7 +890,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
         end
     end
 
-    if nx > 2 && interpolate; plotly_pl = zplot ? [Array{GenericTrace{Dict{Symbol, Any}},1}(), Array{GenericTrace{Dict{Symbol, Any}},1}()] : [Array{GenericTrace{Dict{Symbol, Any}},1}()]; end
+    if nx > 2 && interpolate; plotly_pl = zplot ? [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}(), Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()] : [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()]; end
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
         B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
@@ -776,7 +900,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
             if simple_problem && bi == 1 && i !== 1; continue; end
 
             ϕ = bi % 2 == 1 ? ϕB⁺0 : ϕB⁺
-            label = simple_problem && i == 1 && bi == 1 ? "J(⋅)" : labels[i + (bi + 1) % 2]
+            label = simple_problem && i == 1 && bi == 1 ? "Target" : labels[i + (bi + 1) % 2]
 
             ## Plot Scatter
             if interpolate == false
@@ -784,11 +908,11 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
                 ## Find Boundary in Near-Boundary
                 b = b⁺[:, abs.(ϕ) .< ϵs]
 
-                scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:nx]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
+                Main.scatter!(plots[Int(bi > 2) + 1], [b[i,:] for i=1:nx]..., label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 # scatter!(plots[Int(bi > 2) + 1], b[1,:], b[2,:], label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0)
                 
                 if value_fn
-                    scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims=xlims, ylims=ylims)
+                    Main.scatter!(vfn_plots[Int(bi > 2) + 1], b⁺[1,:], b⁺[2,:], ϕ, label=label, markersize=2, markercolor=plot_colors[i + (bi + 1) % 2], markerstrokewidth=0, alpha=alpha, xlims=xlims, ylims=ylims)
                     # scatter!(vfn_plots[Int(bi > 2) + 1], b[1,:], b[2,:], ϕ, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], label=label)
                 end
             
@@ -796,7 +920,7 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
             else 
 
                 if nx == 2
-                    contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:nx]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label, linewidth=3)
+                    Main.contour!(plots[Int(bi > 2) + 1], [b⁺[i,:] for i=1:nx]..., ϕ, levels=-ϵc:ϵc:ϵc, colorbar=false, lc=plot_colors[i + (bi + 1) % 2], lw=2, label=label, linewidth=3)
 
                     if value_fn
 
@@ -804,17 +928,17 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
                         xig = [collect(minimum(b⁺[i,:]) : cres : maximum(b⁺[i,:])) for i=1:nx]
                         G = hcat(collect.(Iterators.product(xig...))...)'
                         
-                        ## Construct Interpolationb (Should skip this in the future and just use Plotly's built in one for contour)
-                        itp = ScatteredInterpolation.interpolate(inter_method, b⁺, ϕ)
+                        ## Construct Interpolation (Should skip this in the future and just use Plotly's built in one for contour)
+                        itp = interpolate(interp_alg, b⁺, ϕ)
                         itpd = evaluate(itp, G')
                         iϕG = reshape(itpd, length(xig[1]), length(xig[2]))'
                         
-                        surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
+                        Main.surface!(vfn_plots[Int(bi > 2) + 1], xig..., iϕG, colorbar=false, color=plot_colors[i + (bi + 1) % 2], label=label, alpha=alpha)
                     end
             
                 else
                     # isosurface!(plots[Int(bi > 2) + 1], xig..., iϕG, isomin=-ϵc, isomax=ϵc, surface_count=2, lc=plot_colors[i + (bi + 1) % 2], alpha=0.5)
-                    pl = isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=attr(x_show=false, y_show=false, z_show=false),
+                    pl = Main.isosurface(x=b⁺[1,:], y=b⁺[2,:], z=b⁺[3,:], value=ϕ[:], opacity=alpha, isomin=-ϵc, isomax=ϵc, surface_count=1, showlegend=true, showscale=false, caps=Main.PlotlyJS.attr(x_show=false, y_show=false, z_show=false),
                         name=label, colorscale=[[0, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]], [1, "rgb" * string(plot_colors[i + (bi + 1) % 2])[13:end]]])
 
                     push!(plotly_pl[Int(bi > 2) + 1], pl)
@@ -824,17 +948,17 @@ function plot_BRS(T, B⁺T, ϕB⁺T; Φ=nothing, simple_problem=true, ϵs = 0.1,
     end
 
     if value_fn
-        Xplot = Plots.plot(vfn_plots[1], Xplot)
-        if zplot; Zplot = Plots.plot(vfn_plots[2], Zplot); end
+        Xplot = Main.Plots.plot(vfn_plots[1], Xplot)
+        if zplot; Zplot = Main.Plots.plot(vfn_plots[2], Zplot); end
     end
 
     if nx > 2 && interpolate 
-        Xplot = PlotlyJS.plot(plotly_pl[1], Layout(title="BRS of T, in X"));
-        if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Layout(title="BRS of T, in X")); end
+        Xplot = Main.PlotlyJS.plot(plotly_pl[1], Main.PlotlyJS.Layout(title="BRS of T, in X"));
+        if zplot; Zplot = PlotlyJS.plot(plotly_pl[2], Main.PlotlyJS.Layout(title="BRS of T, in X")); end
     end
 
-    display(Xplot); plots = [Xplot]
-    if zplot; display(Zplot); plots = [Xplot, Zplot]; end
+    Main.display(Xplot); plots = [Xplot]
+    if zplot; Main.display(Zplot); plots = [Xplot, Zplot]; end
 
     return plots
 end
@@ -863,11 +987,12 @@ function mat_spiral(rows, cols)
 end
 
 ## Solve the Fundamental i.e. Flow-map for a Time-Varying Linear System
-function solveΦ(A, t; alg=Tsit5(), printing=false)
+function solveΦ(A, t; printing=false)
+    @assert (isdefined(Main, Symbol("OrdinaryDiffEq")) || isdefined(Main, Symbol("OrdinaryDiffEq"))) "Time-varying drift requires integration of the fundamental matrix. Load OrdinaryDiffEq.jl or DifferentialEquations.jl (e.g. `using OrdinaryDiffEq`)."
     if printing; print("LTV System inputted, integrating Φ(t)... \r"); flush(stdout); end
     nx = typeof(A) <: Function ? size(A(t[1]))[1] : size(A[1])[1];
     f = typeof(A) <: Function ? (U,p,s) -> U * A(t[end] - s) : (U,p,s) -> U * A[end:-1:1][findfirst(x->x<=0, (-t .+ s))]
-    sol = solve(ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg);
+    sol = Main.solve(Main.ODEProblem(f, diagm(ones(nx)), (0., t[length(t)])), saveat=t, alg=Main.Tsit5());
     if printing; print("LTV System inputted, integrating Φ(t)... Success!\n"); end
     return sol
 end
@@ -897,8 +1022,8 @@ function intH_ball(system, Hdata, v; p2=true, game="reach",)
     Rvt, R2vt = reshape(view(Rt,1:nu*tix,:) * v, nu, tix), reshape(view(R2t,1:nd*tix,:) * v, nd, tix)
     
     ## Quadrature sum
-    H1 = th * sgn_p1 * (sum(map(norm, eachcol(G * Rvt))) + sum(a * Rvt)) # player 1 / control
-    H2 = p2 ? th * sgn_p2 * (-sum(map(norm, eachcol(G2 * R2vt))) + sum(a2 * R2vt)) : 0 # player 2 / disturbance, opponent   
+    H1 = th * sgn_p1 * (sum(map(norm, eachcol(0.5 * G * Rvt))) + sum(a * Rvt)) # player 1 / control
+    H2 = p2 ? th * sgn_p2 * (-sum(map(norm, eachcol(0.5 * G2 * R2vt))) + sum(a2 * R2vt)) : 0 # player 2 / disturbance, opponent   
 
     return H1 + H2
 end
@@ -932,12 +1057,10 @@ function preH_ball(system, target, t; opt_p=nothing, admm=false, F_init=nothing,
     end
 
     ## Precomputing SVD for matrix sqrt
-    _, Σ,  VV  = svd(Q);
+    _, Σ, VV = svd(Q);
     _, Σ2, VV2 = svd(Q2);
-    # G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
-    # G2 = Diagonal(sqrt.(Σ2)) * VV2;
-    G  = Diagonal(Σ)  * VV; #TODO FIX & TEST
-    G2 = Diagonal(Σ2) * VV2;
+    G  = Diagonal(sqrt.(Σ)) * VV; #TODO FIX & TEST
+    G2 = Diagonal(sqrt.(Σ2)) * VV2;
 
     ## Precomputing ADMM matrix
     F = admm ? inv(F) : F
@@ -960,7 +1083,7 @@ function HJoc_ball(system, dϕdz, t, s; p2=true, game="reach", Hdata=nothing, Φ
 
     _,Σ,VV = svd(Q);
     _,Σ2,VV2 = svd(Q2);
-    G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2;
+    G, G2 = Diagonal(sqrt.(Σ)) * VV, Diagonal(sqrt.(Σ2)) * VV2; # works with sqrt.(Σ) and Q = (0.5 * r)^2 * Q0
 
     uˢ = Q  != zero(Q)  ? sgn_p1 * inv(norm(G * R * dϕdz)) * Q * R * dϕdz + a' : zeros(nu)
     dˢ = Q2 != zero(Q2) && p2 ? sgn_p2 * (inv(norm(G2 * R2 * dϕdz)) * Q2 * R2 * dϕdz - a2') : zeros(nd)

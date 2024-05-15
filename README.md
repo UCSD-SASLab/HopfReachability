@@ -51,115 +51,54 @@ Alone, the Hopf formula is only guaranteed to yield the correct value [1] when t
 
 ## Code Structure
 
-- `Hopf_BRS`: fed a system, target and time array (optionally grid and optimization parameters) and makes a grid and performs optimization for points in the grid near the boundary of the target by calling,
-- `Hopf_cd`/`Hopf_admm`: do the optimization (coordinate descent or the alternating method of multipliers) and reinitializes to find global optimum and calls,
-- `Hopf`: evaluates the value of the Hopf formula for a given value of x and v.
+- `Hopf_BRS`: fed a `system`, `target` and time array and an array of states (or can make a grid for you) and solves the value at those states and optimal control
+- `Hopf_cd`/`Hopf_admm`: do the optimization
+- `Hopf`: gives the value of the Hopf objective for a given value of x and p.
 - `Hopf_minT`: finds the minimum time such that a given state is reachable and returns the optimal control
-- `plot_BRS`: will produce either scatter (fast) or contour (slow and sometimes misleading) plots, can do 2D or 3D, also can plot value function
-- `preH`, `intH`, `HJoc`: utility fn's for precomputing, integrating with precomputed data, solving the optimal control respectivley
+- `preH`, `intH`, `HJoc`: utility fn's for precomputing the Hamiltonian, integrating the Hamiltonian, and solving the optimal control respectivley
 
 ## Demo
 
-Here we solve the Backwards Reachable Sets for three simple, time-varying systems with an elliptical target, inputs confined to the unit ball, and coordinate descent. Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
+Here we solve the Backwards Reachable Sets for a simple, time-varying system with an ball target (L2) and inputs confined to boxes (Linf). Note, when solving the BRS, the value at each point is determined independently and then the zero-level set is interpolated after. The plot below shows the comparison with `hj_reachability.py`, a dynamic-programming method.
 
-```
-using LinearAlgebra, Plots
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, intH_box, preH_box, intH_ball, preH_ball, plot_BRS, Hopf
+```julia
+include(pwd() * "/src/HopfReachability.jl");
+using .HopfReachability: Hopf_BRS, plot_nice, make_grid, make_levelset_fs, make_set_params
+using LinearAlgebra, Plots, OrdinaryDiffEq
 
-## Time
-th = 0.05
-Th = 0.25
-Tf = 1.0
+## Times to Solve
+th, Th, Tf = 0.05, 0.25, 1.0
 T = collect(Th : Th : Tf)
 
-## Initialize (2D Example)
-max_u, max_d = 1.0, 0.5
-
-A = -[0. float(pi); -float(pi) 0.]
-At = [if s <= T[end]/2th; -A; else; A; end; for s=1:Int(T[end]/th)]
-Af(s) = 2 * (Tf - s) * A
-
+## Time-Varying Systems
+Af(t) = -2 * (Tf - t) * [0. float(pi); -float(pi) 0.]                                           
 B₁, B₂ = [1. 0; 0 1], [1. 0; 0 1];
-B₁t, B₂t = [[1. 0; 0 1] for s=1:Int(T[end]/th)], [[1. 0; 0 1] for s=1:Int(T[end]/th)];
-B₁f(s), B₂f(s) = [1. 0; 0 1], [1. 0; 0 1];
 
-inputshape = "Ball"
-Q₁ = [1. 0; 0 1]; Q₂ = [1. 0; 0 1];
-c₁ = [0. 0.]; c₂ = [0. 0.];
+max_u, max_d, input_center, input_shapes = 0.75, 0.25, zeros(2), "ball"
+Q₁, c₁ = make_set_params(input_center, max_u; type=input_shapes) # control set 
+Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # disturbance set
 
-system   = (A, max_u * B₁, max_d * B₂, Q₁, Q₂, c₁, c₂)
-system_t = (At, max_u * B₁, max_d * B₂, Q₁, Q₂, c₁, c₂)
-system_f = (Af, s -> max_u * B₁f(s), s -> max_d * B₂f(s), Q₁, Q₂, c₁, c₂)
+game = "reach" # try 'avoid' for an avoid game
+system_f = (Af, B₁, B₂, Q₁, c₁, Q₂, c₂)
 
-## Target: J(x) = 0 is the boundary of the target
-Qₓ = diagm([1; 1])
-cₓ = [-1.; 1.]
-r = 1.0/2
-J(x::Vector, Qₓ, cₓ) = ((x - cₓ)' * inv(Qₓ) * (x - cₓ))/2 - 0.5 * r^2 #don't need yet
-Jˢ(v::Vector, Qₓ, cₓ) = (v' * Qₓ * v)/2 + cₓ'v + 0.5 * r^2
-J(x::Matrix, Qₓ, cₓ) = diag((x .- cₓ)' * inv(Qₓ) * (x .- cₓ))/2 .- 0.5 * r^2
-Jˢ(v::Matrix, Qₓ, cₓ) = diag(v' * Qₓ * v)/2 + (cₓ'v)' .+ 0.5 * r^2 #don't need yet
-target = (J, Jˢ, (Qₓ, cₓ))
+## Target
+center, radius = [-1.; 1.], 0.5
+J, Jˢ = make_levelset_fs(center, radius; type="ball")
+target = (J, Jˢ, (diagm([1; 1]), center));
 
-## Grid Definition (can be done automatically)
-ϵ = 0.5e-7; res = 30; lbc, ubc = -3, 3; cg = zero(cₓ);
-x1g = collect(cg[1] + lbc : (ubc-lbc)/(res-1) : cg[1] + ubc) .+ ϵ; lg1 = length(x1g); # == res, for comparing to DP
-x2g = collect(cg[2] + lbc : (ubc-lbc)/(res-1) : cg[2] + ubc) .+ ϵ; lg2 = length(x2g);
-Xg = hcat(collect.(Iterators.product(x1g, x2g))...);
+## Points to Solve
+bd, res, ϵ = 3, 0.1, .5e-7
+Xg, xigs, (lb, ub) = make_grid(bd, res, size(A)[1]; return_all=true, shift=ϵ);
 
-## Hopf Coordinate-Descent Parameters (optional)
-vh = 0.01; L = 5; tol = ϵ; lim = 500; lll = 5
-max_runs = 3; max_its = 500
-opt_p_cd = (vh, L, tol, lim, lll, max_runs, max_its)
-
-solution, run_stats = Hopf_BRS(system, target, T; th, Xg, inputshape, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
-solution_t, run_stats = Hopf_BRS(system_t, target, T; th, Xg, inputshape, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
-solution_f, run_stats = Hopf_BRS(system_f, target, T; th, Xg, inputshape, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
+## Solve & Plot
+solution_f, run_stats = Hopf_BRS(system_f, target, T; th, Xg, input_shapes, game);
+plot(solution_f; xigs=xigs, value=true)
 ```
-outputs,
-```
-Precomputation, ...
-
-Solving Backwards Reachable Set,
-   for t=-0.25...
-   for t=-0.5...
-   for t=-0.75...
-   for t=-1.0...
-TOTAL TIME: 2.201028708 s
-MEAN TIME[s] PER TIME POINT: Any[0.0011887127075, 0.0012586165625, 0.0013362251025, 0.0011615285425]
-TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
-
-Precomputation, ...
-LTV System inputted, integrating Φ(t)... Success!
-
-Solving Backwards Reachable Set,
-   for t=-0.25...
-   for t=-0.5...
-   for t=-0.75...
-   for t=-1.0...
-TOTAL TIME: 1.90769075 s
-MEAN TIME[s] PER TIME POINT: Any[0.00105372, 0.001231955, 0.00132280125, 0.00115475552]
-TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
-
-Precomputation, ...
-LTV System inputted, integrating Φ(t)... Success!
-
-Solving Backwards Reachable Set,
-   for t=-0.25...
-   for t=-0.5...
-   for t=-0.75...
-   for t=-1.0...
-TOTAL TIME: 1.840429166 s
-MEAN TIME[s] PER TIME POINT: Any[0.0008633332274999999, 0.0012236046875000002, 0.0014111030199999998, 0.0010980207275]
-TOTAL POINTS PER TIME POINT: Any[400, 400, 400, 400]
-1-element Vector{Plots.Plot{Plots.PlotlyJSBackend}}:
- Plot{Plots.PlotlyJSBackend() n=5}
-```
-Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [HopfReachability_LTV_demo.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/HopfReachability_LTV_demo.jl)) and `plot_BRS` to plot the solutions (target in black, t solutions in red -> blue),
+Then we can use `PyCall` to solve the same problem with `hj_reachability.py` (see [Examples/ltv.jl](https://github.com/UCSD-SASLab/HopfReachability/blob/main/Examples/ltv.jl)) and observe parity between the solutions. In this low-d case, both solutions are computed in less than 1.5s.
 
 <p align="center">
-  <img src="./Koopman-Hopf/Figures/LTV_demo2.png" width="800">
+  <img src="./Examples/figures/ltv.png" width="600">
 </p>
 
-See the /Examples for more.
+See `/Examples` for more.
 

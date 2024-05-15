@@ -3,8 +3,8 @@
 # wsharpless@ucsd.edu
 
 using LinearAlgebra, Plots, JLD
-include("/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/Koop_HJR/HL_fastHJR/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, intH_ytc17, preH_ytc17, plot_BRS, Hopf
+include(pwd() * "/src/HopfReachability.jl");
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf
 
 
 ########################################################################################
@@ -38,7 +38,7 @@ J(x::Matrix, A, c) = diag((x .- c)' * A * (x .- c))/2 .- 0.5
 Js(v::Matrix, A, c) = diag(v' * inv(A) * v)/2 + (c'v)' .+ 0.5 #don't need yet
 target = (J, Js, (Ap, cp))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 bd = (2, 8)
 ϵ = 0.5e-7
 N = 10 + ϵ
@@ -60,9 +60,8 @@ max_its = 10
 opt_p_admm = (ρ, ρ2, tol, max_its)
 
 ## Run the solver
-solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+solution, run_stats = Hopf_BRS(system, target, T;
                                                     opt_method = Hopf_cd,
-                                                    preH = preH_ytc17,
                                                     th,
                                                     grid_p,
                                                     opt_p = opt_p_cd,
@@ -75,8 +74,8 @@ B⁺T, ϕB⁺T = solution;
 # save("KHR_test.jld", "solution", solution)
 # B⁺T, ϕB⁺T = load("KHR_solution.jld", "solution");
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
+plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.1)
+plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=true, alpha=0.5)
 
 
 ########################################################################################
@@ -111,9 +110,8 @@ for (ri, r) in enumerate([0.01, 1., 5., 10.])
      Q, Q2 = r^2 * diagm(ones(dim)), r^2 * 0.5 * diagm(ones(dim)) #Controlled and Disturbed
      system = (M, B, C, Q, Q2, a1, a2)
 
-     solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+     solution, run_stats = Hopf_BRS(system, target, T;
                                                        opt_method = Hopf_cd, 
-                                                       preH=preH_ytc17,
                                                        th,
                                                        grid_p,
                                                     #    opt_p = opt_p_admm,
@@ -122,9 +120,9 @@ for (ri, r) in enumerate([0.01, 1., 5., 10.])
                                                        printing=true);
      B⁺T, ϕB⁺T = solution;
 
-    #  plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
-    #  plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
-     plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
+    #  plot_contour = plot_nice(T, solution; M, cres=0.01, interpolate=true, pal_colors = pal_colors_list[ri]);
+    #  plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, value_fn=true, alpha=0.5)
+     plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, value_fn=false, alpha=0.5, pal_colors = pal_colors_list[ri])
      push!(plts, plot_contour)
 end
 
@@ -165,7 +163,7 @@ J(x::Matrix, A, c) = diag((x .- c)' * A * (x .- c))/2 .- 0.5
 Js(v::Matrix, A, c) = diag(v' * inv(A) * v)/2 + (c'v)' .+ 0.5 #don't need yet
 target = (J, Js, (Ap, cp))
 
-## Grid Parameters (optional, deafult here)
+## Points to Solve (optional, deafult here)
 bd = (2, 8)
 ϵ = 0.5e-7
 N = 3 + ϵ
@@ -181,9 +179,8 @@ max_runs = 20
 opt_p = (vh, L, tol, lim, lll, max_runs)
 
 ## Run the solver
-solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+solution, run_stats = Hopf_BRS(system, target, T;
                                                     opt_method = Hopf_cd,
-                                                    preH = preH_ytc17,
                                                     th,
                                                     grid_p,
                                                     opt_p,
@@ -192,10 +189,10 @@ solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
                                                     printing = true);
 B⁺T, ϕB⁺T = solution;
 
-# plot = plot_BRS(T, B⁺T, ϕB⁺T; M, cres=0.01, contour=true);
+# plot = plot_nice(T, solution; M, cres=0.01, contour=true);
 
-plot_scatter = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵs=0.1, interpolate=false, alpha=0.1)
-plot_contour = plot_BRS(T, B⁺T, ϕB⁺T; M, ϵc=0.001, interpolate=true, alpha=0.2);
+plot_scatter = plot_nice(T, solution; M, ϵs=0.1, interpolate=false, alpha=0.1)
+plot_contour = plot_nice(T, solution; M, ϵc=0.001, interpolate=true, alpha=0.2);
 
 
 
@@ -231,9 +228,8 @@ for dim in dims
     target = (J, Js, (Ap, cp))
 
     ## Run the solver
-    solution, run_stats = Hopf_BRS(system, target, intH_ytc17, T;
+    solution, run_stats = Hopf_BRS(system, target, T;
                                                         opt_method = Hopf_cd,
-                                                        preH = preH_ytc17,
                                                         th,
                                                         grid_p,
                                                         opt_p = opt_p_cd,

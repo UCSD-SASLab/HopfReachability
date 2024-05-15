@@ -34,7 +34,7 @@ Glycolysis = pk_Glycolysis_utils.fit_DMDc(pk_Glycolysis_utils.Xfull, train_ix)
 include(home * "HL_fastHJR/Comparison/Control_Comparison_fn.jl");
 
 include(home * "HL_fastHJR/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, plot_BRS, Hopf_minT, Hopf_admm_cd, Hopf_cd
+using .HopfReachability: Hopf_BRS, plot_nice, Hopf_minT, Hopf_admm_cd, Hopf_cd
 
 #   Initialize
 #   ==========
