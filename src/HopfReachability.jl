@@ -804,13 +804,8 @@ function contour(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=not
         end
     end
 
-    # FIXME : plot is mishandling the kwargs? ERROR: "Cannot convert Pair{Symbol, Tuple{Int64, Int64}} to series data for plotting"
-    # plot!(BRS_plot, kwargs...)
-    # if value; plot!(value_plot, kwargs...); end
-    # println(kwargs); println(kwargs...)
-
-    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
-    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
+    if !value; plot!(BRS_plot; size=plot_size, legend=legend, dpi=dpi, kwargs...); end
+    output = value ? plot(BRS_plot, value_plot; size=plot_size, legend=legend, dpi=dpi, kwargs...) : BRS_plot
     return output
 end
 
@@ -837,8 +832,8 @@ function scatter(solution::Tuple{Vector{Any}, Vector{Any}}; value=true, xigs=not
     end
     if value; for ti=1:length(solution[1]); Plots.scatter!(value_plot, solution[1][ti][1,:], solution[1][ti][2,:], solution[2][ti], color=colors[ti], label="", alpha=value_alpha, markersize=markersize, markerstrokewidth=0.); end; end
 
-    if !value; plot!(BRS_plot, size=plot_size, legend=legend, dpi=dpi); end
-    output = value ? plot(BRS_plot, value_plot, size=plot_size, legend=legend, dpi=dpi) : BRS_plot
+    if !value; plot!(BRS_plot; size=plot_size, legend=legend, dpi=dpi, kwargs...); end
+    output = value ? plot(BRS_plot, value_plot; size=plot_size, legend=legend, dpi=dpi, kwargs...) : BRS_plot
     return output
 end
 
