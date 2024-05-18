@@ -2,30 +2,30 @@
 using LinearAlgebra, Plots, DifferentialEquations, LaTeXStrings
 
 nx = 12
-function quadrotor_12D!(du, u, p, t)
-    
-    m, g, Ixx, Iyy, Izz, controls = p
+function quadrotor_12D!(dx, x, p, t)
+    params, controls = p
+    m, g, Ixx, Iyy, Izz = params
     F, τx, τy, τz = controls
       
-    vx, vy, vz = u[4:6]
-    ϕ, θ, ψ = u[7:9]
-    wx, wy, wz = u[10:12]
+    vx, vy, vz = x[4:6]
+    ϕ, θ, ψ = x[7:9]
+    wx, wy, wz = x[10:12]
 
-    du[1] = vx
-    du[2] = vy
-    du[3] = vz
+    dx[1] = vx
+    dx[2] = vy
+    dx[3] = vz
 
-    du[4] = (cos(ϕ)*sin(θ)*cos(ψ) + sin(ϕ)*sin(ψ)) * F(t)/m
-    du[5] = (cos(ϕ)*sin(θ)*sin(ψ) - sin(ϕ)*cos(ψ)) * F(t)/m
-    du[6] = (cos(ϕ)*cos(θ)) * F(t)/m - g
+    dx[4] = (cos(ϕ)*sin(θ)*cos(ψ) + sin(ϕ)*sin(ψ)) * F(t)/m
+    dx[5] = (cos(ϕ)*sin(θ)*sin(ψ) - sin(ϕ)*cos(ψ)) * F(t)/m
+    dx[6] = (cos(ϕ)*cos(θ)) * F(t)/m - g
     
-    du[7] = wx + wy*sin(ϕ)*tan(θ) + wz*cos(ϕ)*tan(θ)
-    du[8] = wy*cos(ϕ) - wz*sin(ϕ)
-    du[9] = wy*sin(ϕ)/cos(θ) + wz*cos(ϕ)/cos(θ)
+    dx[7] = wx + wy*sin(ϕ)*tan(θ) + wz*cos(ϕ)*tan(θ)
+    dx[8] = wy*cos(ϕ) - wz*sin(ϕ)
+    dx[9] = wy*sin(ϕ)/cos(θ) + wz*cos(ϕ)/cos(θ)
     
-    du[10] = (τx(t) - (Izz - Iyy) * wy * wz) / Ixx
-    du[11] = (τy(t) - (Ixx - Izz) * wx * wz) / Iyy
-    du[12] = (τz(t) - (Iyy - Ixx) * wx * wy) / Izz 
+    dx[10] = (τx(t) - (Izz - Iyy) * wy * wz) / Ixx
+    dx[11] = (τy(t) - (Ixx - Izz) * wx * wz) / Iyy
+    dx[12] = (τz(t) - (Iyy - Ixx) * wx * wy) / Izz 
 end
 
 R_ZYX(ϕ,θ,ψ) = [cos(θ)*cos(ψ) cos(θ)*sin(ψ) -sin(θ);
@@ -49,7 +49,7 @@ function plot_quadrotor!(traj_plot, x; r = 0.1, ph = 0.025, base_alpha=0.8, roto
     return traj_plot
 end
 
-function flight_plot(sol, ctrl_law; traj_path=true, backend=gr, xyz_only=false, base_alpha=0.6, rotor_alpha=0.6, scale=2, traj_alpha=0.6, camera=(45,15),
+function flight_plot(sol, ctrl_law; traj_path=true, backend=gr, xyz_only=false, base_alpha=0.6, rotor_alpha=0.6, scale=1, traj_alpha=0.6, camera=(45,15),
     fig_size=(1000,500), body_times=nothing, vline=true, bd=nothing, xlims=nothing, ylims=nothing, zlims=nothing, plot_title=L"\textrm{Flight}", kwargs...)
     
     backend()
@@ -85,18 +85,41 @@ function flight_gif(sol, ctrl_law; fname=nothing, fps=20, loop=0, dt=0.1, traj_p
     gif(anim, fname; fps, loop)
 end
 
+## Initialize
+
+test_params = 1.0, 9.81, 0.1, 0.1, 0.2
+cf_params = 0.034, 9.81, 16.571710e-6, 16.655602e-6, 29.261652e-6 # kg, m s^-2, kg m^2, kg m^2, kg m^2
+params = cf_params
+
+# sine_thrust = function (t)
+#     t < 2π ? 9.81 + sin(t) : 9.81 - sin(t)
+# end
+
+# ut, ur = t -> 10, t -> 0.00125 * sin(t)
+# zero_f = t -> 0.
+
+# ctrls_thrust = [sine_thrust, zero_f, zero_f, zero_f]
+# ctrl_pitch = [ut, zero_f, ur, zero_f]
+# ctrl_yaw = [ut, zero_f, zero_f, t -> 10*ur(t)]
+# ctrl_roll = [ut, ur, zero_f, zero_f]
+
+sine_thrust = function (t)
+    t < 2π ? 9.81*params[1] + 0.01 * sin(t) : 9.81*params[1] - 0.01 * sin(t)
+end
+
+ut, ur = t -> 9.81*params[1] + 5e-3, t -> 1e-7 * sin(t)
+zero_f = t -> 0.
+
+ctrls_thrust = [sine_thrust, zero_f, zero_f, zero_f]
+ctrl_pitch = [ut, zero_f, ur, zero_f]
+ctrl_yaw = [ut, zero_f, zero_f, t -> 10*ur(t)]
+ctrl_roll = [ut, ur, zero_f, zero_f]
+
 ## Thrust Test
 
 x0 = zeros(nx)
 tspan = (0, 4π)
-
-sine_thrust = function (t)
-    t < 2π ? 9.81 + sin(t) : 9.81 - sin(t)
-end
-zero_f = t -> 0.
-ctrls_thrust = [sine_thrust, zero_f, zero_f, zero_f]
-
-p = [1.0, 9.81, 0.1, 0.1, 0.2, ctrls_thrust]  # Initial thrust and torques are set to zero
+p = [params, ctrls_thrust]
 
 prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
 sol_thrust = DifferentialEquations.solve(prob)
@@ -108,9 +131,7 @@ flight_plot(sol_thrust, ctrls_thrust; plot_title=L"\textrm{Thrust}")
 ## Positive Roll
 
 tspan = (0, 2π)
-ut, ur = t -> 10, t -> 0.00125 * sin(t)
-ctrl_roll = [ut, ur, zero_f, zero_f]
-p = [1.0, 9.81, 0.1, 0.1, 0.2, ctrl_roll]  # Initial thrust and torques are set to zero
+p = [params, ctrl_roll]
 
 prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
 sol_roll = DifferentialEquations.solve(prob)
@@ -119,8 +140,7 @@ flight_plot(sol_roll, ctrl_roll; plot_title=L"\textrm{Roll}")
 
 ## Positive Pitch
 
-ctrl_pitch = [ut, zero_f, ur, zero_f]
-p = [1.0, 9.81, 0.1, 0.1, 0.2, ctrl_pitch]  # Initial thrust and torques are set to zero
+p = [params, ctrl_pitch]
 prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
 sol_pitch = DifferentialEquations.solve(prob)
 
@@ -128,8 +148,7 @@ flight_plot(sol_pitch, ctrl_pitch; plot_title=L"\textrm{Pitch}")
 
 ## Positive Yaw
 
-ctrl_yaw = [ut, zero_f, zero_f, t -> 10*ur(t)]
-p = [1.0, 9.81, 0.1, 0.1, 0.2, ctrl_yaw]  # Initial thrust and torques are set to zero
+p = [params, ctrl_yaw]
 prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
 sol_yaw = DifferentialEquations.solve(prob)
 
