@@ -5,7 +5,7 @@ nx = 12
 function quadrotor_12D!(dx, x, p, t)
     params, controls = p
     m, g, Ixx, Iyy, Izz = params
-    F, τx, τy, τz = controls
+    F, τx, τy, τz = controls(x, t)
       
     vx, vy, vz = x[4:6]
     ϕ, θ, ψ = x[7:9]
@@ -15,17 +15,17 @@ function quadrotor_12D!(dx, x, p, t)
     dx[2] = vy
     dx[3] = vz
 
-    dx[4] = (cos(ϕ)*sin(θ)*cos(ψ) + sin(ϕ)*sin(ψ)) * F(t)/m
-    dx[5] = (cos(ϕ)*sin(θ)*sin(ψ) - sin(ϕ)*cos(ψ)) * F(t)/m
-    dx[6] = (cos(ϕ)*cos(θ)) * F(t)/m - g
+    dx[4] = (cos(ϕ)*sin(θ)*cos(ψ) + sin(ϕ)*sin(ψ)) * F/m
+    dx[5] = (cos(ϕ)*sin(θ)*sin(ψ) - sin(ϕ)*cos(ψ)) * F/m
+    dx[6] = (cos(ϕ)*cos(θ)) * F/m - g
     
     dx[7] = wx + wy*sin(ϕ)*tan(θ) + wz*cos(ϕ)*tan(θ)
     dx[8] = wy*cos(ϕ) - wz*sin(ϕ)
     dx[9] = wy*sin(ϕ)/cos(θ) + wz*cos(ϕ)/cos(θ)
     
-    dx[10] = (τx(t) - (Izz - Iyy) * wy * wz) / Ixx
-    dx[11] = (τy(t) - (Ixx - Izz) * wx * wz) / Iyy
-    dx[12] = (τz(t) - (Iyy - Ixx) * wx * wy) / Izz 
+    dx[10] = (τx - (Izz - Iyy) * wy * wz) / Ixx
+    dx[11] = (τy - (Ixx - Izz) * wx * wz) / Iyy
+    dx[12] = (τz - (Iyy - Ixx) * wx * wy) / Izz 
 end
 
 R_ZYX(ϕ,θ,ψ) = [cos(θ)*cos(ψ) cos(θ)*sin(ψ) -sin(θ);
@@ -68,9 +68,10 @@ function flight_plot(sol, ctrl_law; traj_path=true, backend=gr, xyz_only=false, 
     ω_plot = plot(sol, vars=(0,10:12), lw=2, ylabel=L"ω_i", label=[L"ω_ϕ" L"ω_θ" L"ω_ψ"], xlabel="", xlims=(0., sol.t[end]+0.1))
 
     tt = 0.:0.01:sol.t[end]
-    thrust_plot = plot(tt, ctrl_law[1].(tt), ylabel=L"u_{thrust}", label="", xlims=(0., sol.t[end]+0.1)); 
-    urpy_plot = plot(tt, ctrl_law[2].(tt), ylabel=L"u_{rpy}", label=L"u_ϕ", xlims=(0., sol.t[end]+0.1)); 
-    plot!(tt, ctrl_law[3].(tt), label=L"u_θ"); plot!(tt, ctrl_law[4].(tt), label=L"u_ψ", xlabel=L"t"); 
+    ctrls_tt = hcat([ctrl_law(x,t) for (x,t) in zip(sol.(tt), tt)]...)
+    thrust_plot = plot(tt, ctrls_tt[4,:], ylabel=L"u_{thrust}", label="", xlims=(0., sol.t[end]+0.1)); 
+    urpy_plot = plot(tt, ctrls_tt[1,:], ylabel=L"u_{rpy}", label=L"u_ϕ", xlims=(0., sol.t[end]+0.1)); 
+    plot!(tt, ctrls_tt[2,:], label=L"u_θ"); plot!(tt, ctrls_tt[3,:], label=L"u_ψ", xlabel=L"t"); 
 
     if vline; for t ∈ body_times, pl ∈ [v_plot, ω_plot, thrust_plot, urpy_plot]; vline!(pl, [t], lw=1.5, label="", color="black"); end; end
 
@@ -79,7 +80,7 @@ end
 
 function flight_gif(sol, ctrl_law; fname=nothing, fps=20, loop=0, dt=0.1, traj_path=false, kwargs...)
     fname = isnothing(fname) ? "test_$(time()).gif" : fname
-    anim = @animate for tt=1:dt:sol.t[end]
+    anim = @animate for tt=0.:dt:sol.t[end]
         flight_plot(sol, ctrl_law; traj_path=traj_path, body_times=[tt], kwargs...)
     end
     gif(anim, fname; fps, loop)
@@ -91,29 +92,14 @@ test_params = 1.0, 9.81, 0.1, 0.1, 0.2
 cf_params = 0.034, 9.81, 16.571710e-6, 16.655602e-6, 29.261652e-6 # kg, m s^-2, kg m^2, kg m^2, kg m^2
 params = cf_params
 
-# sine_thrust = function (t)
-#     t < 2π ? 9.81 + sin(t) : 9.81 - sin(t)
-# end
-
-# ut, ur = t -> 10, t -> 0.00125 * sin(t)
-# zero_f = t -> 0.
-
-# ctrls_thrust = [sine_thrust, zero_f, zero_f, zero_f]
-# ctrl_pitch = [ut, zero_f, ur, zero_f]
-# ctrl_yaw = [ut, zero_f, zero_f, t -> 10*ur(t)]
-# ctrl_roll = [ut, ur, zero_f, zero_f]
-
-sine_thrust = function (t)
-    t < 2π ? 9.81*params[1] + 0.01 * sin(t) : 9.81*params[1] - 0.01 * sin(t)
-end
-
 ut, ur = t -> 9.81*params[1] + 5e-3, t -> 1e-7 * sin(t)
 zero_f = t -> 0.
+sine_thrust = function (t); t < 2π ? 9.81*params[1] + 0.01 * sin(t) : 9.81*params[1] - 0.01 * sin(t); end
 
-ctrls_thrust = [sine_thrust, zero_f, zero_f, zero_f]
-ctrl_pitch = [ut, zero_f, ur, zero_f]
-ctrl_yaw = [ut, zero_f, zero_f, t -> 10*ur(t)]
-ctrl_roll = [ut, ur, zero_f, zero_f]
+ctrls_thrust = (x,t) -> [sine_thrust(t), zero_f(t), zero_f(t), zero_f(t)]
+ctrl_pitch = (x,t) -> [ut(t), zero_f(t), ur(t), zero_f(t)]
+ctrl_yaw = (x,t) -> [ut(t), zero_f(t), zero_f(t), 10*ur(t)]
+ctrl_roll = (x,t) -> [ut(t), ur(t), zero_f(t), zero_f(t)]
 
 ## Thrust Test
 
@@ -154,9 +140,96 @@ sol_yaw = DifferentialEquations.solve(prob)
 
 flight_plot(sol_yaw, ctrl_yaw; plot_title=L"\textrm{Yaw}")
 
+### Comparison with Crazyswarm (Rowan) model
+
+using PyCall
+
+pushfirst!(pyimport("sys")."path", pwd() * "/Examples/quadrotor/");
+pushfirst!(pyimport("sys")."path", "/Users/willsharpless/crazyflie-firmware/build");
+# hj_r_setup = pyimport("vdp_hj_reachability");
+np, rowan = pyimport("numpy"), pyimport("rowan")
+cs_model, cs_types, cs_SIL = pyimport("crazyswarm_model"), pyimport("sim_data_types"), pyimport("crazyflie_sil");
+
+function cs_solve(x0, ut, tf; dt=5e-4, ll_ctrl_name = "mellinger")
+    
+    x0_cs = cs_types.State(pos=x0[1:3], vel=x0[4:6], quat=rowan.from_euler(x0[7:9]...), omega=x0[10:12])
+    steps = length(0:dt:tf)
+    X = zeros(12, steps)
+    X[:,1] = x0
+    
+    ## Solve with SIL Crazyswarm model
+    model = cs_model.Quadrotor(x0_cs)
+    uav = cs_SIL.CrazyflieSIL("name", x0_cs, ll_ctrl_name, model.time, initialState=x0_cs) # usually self.backend.time
+
+    for (tix, ti) in enumerate(0:dt:tf)
+        uav.cmdVelLegacy(ut(model.fullstate(), ti)...)            # sets mode & set_point
+        action = uav.executeController()      # calls controller, powerDist, pwm_to_rpm
+        model.step(action, dt)                # evolves 13D model, uses FE+rowan
+        uav.setState(model.state)             # updates internal
+        X[:,tix] = model.fullstate()
+    end
+
+    return X
+end
+
+function make_sol(cs_X, tf; dt=5e-3)
+
+    x0 = cs_X[:,1]
+    tspan = (0, tf)
+    params = [0.034, 9.81, 16.571710e-6, 16.655602e-6, 29.261652e-6] # filler
+    p = [params, (x,t)->zeros(4)]
+
+    prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
+    cs_sol = DifferentialEquations.solve(prob; saveat=dt)
+
+    @assert length(cs_sol) == size(cs_X, 2) "arr lens dont match: $(length(cs_sol))≠$(size(cs_X, 2))"
+    for i=1:length(cs_sol); cs_sol[i] = cs_X[:,i]; end
+
+    return cs_sol
+end
+
+## Thrust / Roll test with Crazyswarm sim model
+
+tf, dt = 10., 5e-3
+ctrl_thrust_cs = (x,t)->[0., 0., 0., 4.925e4] # RPY can't be so easily controlled tho... try 8.18512e-4
+cs_sol = make_sol(cs_solve(x0, ctrl_thrust_cs, tf; dt), tf);
+flight_plot(cs_sol, ctrl_thrust_cs; plot_title=L"\textrm{CrazySwarm - Thrust}")
+
+tf, dt = 10., 5e-3
+ctrl_thrust_cs = (x,t)->[8.18511e-4, 0., 0., 4.925e4] # RPY can't be so easily controlled tho... try 8.18512e-4 vs. 8.18511e-4
+cs_sol = make_sol(cs_solve(x0, ctrl_thrust_cs, tf; dt), tf);
+flight_plot(cs_sol, ctrl_thrust_cs; plot_title=L"\textrm{CrazySwarm - Thrust}", backend=gr)
+
+## LQR test with Crazyswarm sim model
+
+K_matrix = [0.0 0.2 0.0 0.0 0.2 0.0 0.0;
+            0.2 0.0 0.0 0.2 0.0 0.0 0.0; 
+            0.0 0.0 0.0 0.0 0.0 0.0 0.0;  
+            0.0 0.0 -5.4772 0.0 0.0 -5.5637 0.0]
+
+function LQR(x, t; u_target=[0.0, 0.0, 0.0, 12], xref=t->[0., 0., 1., 0., 0., 0., 0.])
+    control = K_matrix * (x[[1:6..., 9]] - xref(t)) + u_target
+    return vcat(clamp.(control[1:3], -np.pi/6, np.pi/6)*180/π, 4096 * control[4])
+end
+
+tf, dt = 10., 5e-3
+cs_sol = make_sol(cs_solve(x0, LQR, tf; dt), tf);
+flight_plot(cs_sol, LQR; plot_title=L"\textrm{CrazySwarm - LQR}", backend=plotly)
+flight_gif(cs_sol, LQR; plot_title=L"\textrm{CrazySwarm - LQR}", fname="LQR_quadsim_csport.gif")
+
+tf, dt = 15., 5e-3
+xref_2 = t->[0., 1., 1., 0., 0., 0., 0.]
+cs_sol = make_sol(cs_solve(x0, (x,t) -> LQR(x,t; xref=xref_2), tf; dt), tf);
+flight_plot(cs_sol, LQR; plot_title=L"\textrm{CrazySwarm - LQR Test 2}")
+
+# tf, dt = 15., 5e-3
+# fqy = 0.05
+# fig8(t) = t < 5 ? [0., 0., 1., 0., 0., 0., 0.] : [sin(fqy*(t-5)), sin(fqy*(t-5))*cos(fqy*(t-5)), 1., 0., 0., 0., 0.]
+# cs_sol = make_sol(cs_solve(x0, (x,t) -> LQR(x,t; xref=fig8), tf; dt), tf);
+# flight_plot(cs_sol, LQR; plot_title=L"\textrm{CrazySwarm - LQR Fig8}")
+# flight_gif(cs_sol, LQR; plot_title=L"\textrm{CrazySwarm - LQR Fig8}", fname="LQR_fig8_quadsim_csport.gif")
+
 ### model for controller (7D? 12D?)
-
-
 
 ### linearize model for controller
 
