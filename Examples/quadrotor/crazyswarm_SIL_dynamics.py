@@ -1,17 +1,231 @@
 #!/usr/bin/env python3
-
 """
 Crazyflie Software-In-The-Loop Wrapper that uses the firmware Python bindings.
 
     2022 - Wolfgang Hönig (TU Berlin)
+
+    2024 - Will Sharpless: combined for simulation sin ROS (this is self-contained except firmware, np and rowan)
+      Note, I made a few edits to remove ROS & the Backend class. Also, added a method at the end for sim.
 """
 from __future__ import annotations
 
-import cffirmware as firm
 import numpy as np
+# from rclpy.node import Node
+# from rclpy.time import Time
+# from rosgraph_msgs.msg import Clock
+import cffirmware as firm
 import rowan
 
-import sim_data_types
+class State:
+    """Class that stores the state of a UAV as used in the simulator interface."""
+
+    def __init__(self, pos=np.zeros(3), vel=np.zeros(3), euler=None,
+                 quat=np.array([1, 0, 0, 0]), omega=np.zeros(3)):
+        # internally use one numpy array
+        self._state = np.empty(13)
+        self.pos = pos
+        self.vel = vel
+        self.omega = omega
+        if euler is None:
+            self.quat = quat
+        else:
+            self.quat = rowan.from_euler(*euler)            
+
+    @property
+    def pos(self):
+        """Position [m; world frame]."""
+        return self._state[0:3]
+
+    @pos.setter
+    def pos(self, value):
+        self._state[0:3] = value
+
+    @property
+    def vel(self):
+        """Velocity [m/s; world frame]."""
+        return self._state[3:6]
+
+    @vel.setter
+    def vel(self, value):
+        self._state[3:6] = value
+
+    @property
+    def quat(self):
+        """Quaternion [qw, qx, qy, qz; body -> world]."""
+        return self._state[6:10]
+
+    @quat.setter
+    def quat(self, value):
+        self._state[6:10] = value
+
+    @property
+    def omega(self):
+        """Angular velocity [rad/s; body frame]."""
+        return self._state[10:13]
+
+    @omega.setter
+    def omega(self, value):
+        self._state[10:13] = value
+
+    def __repr__(self) -> str:
+        return 'State pos={}, vel={}, quat={}, omega={}'.format(
+            self.pos, self.vel, self.quat, self.omega)
+
+
+class Action:
+    """Class that stores the action of a UAV as used in the simulator interface."""
+
+    def __init__(self, rpm):
+        # internally use one numpy array
+        self._action = np.empty(4)
+        self.rpm = rpm
+
+    @property
+    def rpm(self):
+        """Rotation per second [rpm]."""
+        return self._action
+
+    @rpm.setter
+    def rpm(self, value):
+        self._action = value
+
+    def __repr__(self) -> str:
+        return 'Action rpm={}'.format(self.rpm)
+
+# class Backend:
+#     """Backend that uses newton-euler rigid-body dynamics implemented in numpy."""
+
+#     def __init__(self, node: Node, names: list[str], states: list[State]):
+#         self.node = node
+#         self.names = names
+#         self.clock_publisher = node.create_publisher(Clock, 'clock', 10)
+#         self.t = 0
+#         self.dt = 0.0005
+
+#         self.uavs = []
+#         for state in states:
+#             uav = Quadrotor(state)
+#             self.uavs.append(uav)
+
+#     def time(self) -> float:
+#         return self.t
+
+#     def step(self, states_desired: list[State], actions: list[Action]) -> list[State]:
+#         # advance the time
+#         self.t += self.dt
+
+#         next_states = []
+
+#         for uav, action in zip(self.uavs, actions):
+#             uav.step(action, self.dt)
+#             next_states.append(uav.state)
+
+#         # print(states_desired, actions, next_states)
+#         # publish the current clock
+#         clock_message = Clock()
+#         clock_message.clock = Time(seconds=self.time()).to_msg()
+#         self.clock_publisher.publish(clock_message)
+
+#         return next_states
+
+#     def shutdown(self):
+#         pass
+
+class Quadrotor:
+    """Basic rigid body quadrotor model (no drag) using numpy and rowan."""
+    # WAS: added time to shed Backend wrapper
+
+    def __init__(self, state):
+        self.t = 0
+        # parameters (Crazyflie 2.0 quadrotor)
+        self.mass = 0.034  # kg
+        # self.J = np.array([
+        # 	[16.56,0.83,0.71],
+        # 	[0.83,16.66,1.8],
+        # 	[0.72,1.8,29.26]
+        # 	]) * 1e-6  # kg m^2
+        self.J = np.array([16.571710e-6, 16.655602e-6, 29.261652e-6])
+
+        # Note: we assume here that our control is forces
+        arm_length = 0.046  # m
+        arm = 0.707106781 * arm_length
+        t2t = 0.006  # thrust-to-torque ratio
+        self.B0 = np.array([
+            [1, 1, 1, 1],
+            [-arm, -arm, arm, arm],
+            [-arm, arm, arm, -arm],
+            [-t2t, t2t, -t2t, t2t]
+            ])
+        self.g = 9.81  # not signed
+
+        if self.J.shape == (3, 3):
+            self.inv_J = np.linalg.pinv(self.J)  # full matrix -> pseudo inverse
+        else:
+            self.inv_J = 1 / self.J  # diagonal matrix -> division
+
+        self.state = state
+
+    def step(self, action, dt, f_a=np.zeros(3)):
+
+        self.t += dt
+
+        # convert RPM -> Force
+        def rpm_to_force(rpm):
+            # polyfit using data and scripts from https://github.com/IMRCLab/crazyflie-system-id
+            p = [2.55077341e-08, -4.92422570e-05, -1.51910248e-01]
+            force_in_grams = np.polyval(p, rpm)
+            force_in_newton = force_in_grams * 9.81 / 1000.0
+            return np.maximum(force_in_newton, 0)
+
+        force = rpm_to_force(action.rpm)
+
+        # compute next state
+        eta = np.dot(self.B0, force)
+        f_u = np.array([0, 0, eta[0]])
+        tau_u = np.array([eta[1], eta[2], eta[3]])
+
+        # dynamics
+        # dot{p} = v
+        pos_next = self.state.pos + self.state.vel * dt
+        # mv = mg + R f_u + f_a
+        vel_next = self.state.vel + (
+            np.array([0, 0, -self.g]) +
+            (rowan.rotate(self.state.quat, f_u) + f_a) / self.mass) * dt
+
+        # dot{R} = R S(w)
+        # to integrate the dynamics, see
+        # https://www.ashwinnarayan.com/post/how-to-integrate-quaternions/, and
+        # https://arxiv.org/pdf/1604.08139.pdf
+        # Sec 4.5, https://arxiv.org/pdf/1711.02508.pdf
+        omega_global = rowan.rotate(self.state.quat, self.state.omega)
+        q_next = rowan.normalize(
+            rowan.calculus.integrate(
+                self.state.quat, omega_global, dt))
+
+        # mJ = Jw x w + tau_u
+        omega_next = self.state.omega + (
+            self.inv_J * (np.cross(self.J * self.state.omega, self.state.omega) + tau_u)) * dt
+
+        self.state.pos = pos_next
+        self.state.vel = vel_next
+        self.state.quat = q_next
+        self.state.omega = omega_next
+
+        # if we fall below the ground, set velocities to 0
+        if self.state.pos[2] < 0:
+            self.state.pos[2] = 0
+            self.state.vel = [0, 0, 0]
+            self.state.omega = [0, 0, 0]
+
+    def time(self) -> float:
+        return self.t
+    
+    def fullstate(self):
+        return np.concatenate([self.state.pos, 
+                               self.state.vel, 
+                               rowan.to_euler(self.state.quat, convention='xyz'), # tried 'xyz' & 'zyx', neither fixes
+                               self.state.omega])
+
 
 class TrajectoryPolynomialPiece:
 
@@ -187,7 +401,8 @@ class CrazyflieSIL:
     def cmdVelLegacy(self, roll, pitch, yawrate, thrust): 
         self.mode = CrazyflieSIL.MODE_LOW_VELOCITY
         self.setpoint.attitude.roll = roll
-        self.setpoint.attitude.pitch = -pitch
+        # self.setpoint.attitude.pitch = -pitch
+        self.setpoint.attitude.pitch = pitch
         self.setpoint.attitudeRate.yaw = yawrate  # rad/s -> deg/s
         self.setpoint.thrust = thrust
         
@@ -286,7 +501,7 @@ class CrazyflieSIL:
         # self.state = setState
         # return self._fwstate_to_sim_data_types_state(setState)
 
-    def setState(self, state: sim_data_types.State):
+    def setState(self, state: State):
         self.state.position.x = state.pos[0]
         self.state.position.y = state.pos[1]
         self.state.position.z = state.pos[2]
@@ -318,7 +533,7 @@ class CrazyflieSIL:
             return None
 
         if self.mode == CrazyflieSIL.MODE_IDLE:
-            return sim_data_types.Action([0, 0, 0, 0])
+            return Action([0, 0, 0, 0])
 
         time_in_seconds = self.time_func()
         # ticks is essentially the time in milliseconds as an integer
@@ -360,7 +575,7 @@ class CrazyflieSIL:
             force_in_newton = force_in_grams * 9.81 / 1000.0
             return np.maximum(force_in_newton, 0)
 
-        return sim_data_types.Action(
+        return Action(
             [pwm_to_rpm(self.motors_thrust_pwm.motors.m1),
              pwm_to_rpm(self.motors_thrust_pwm.motors.m2),
              pwm_to_rpm(self.motors_thrust_pwm.motors.m3),
@@ -396,4 +611,32 @@ class CrazyflieSIL:
         else:
             quat = fwsetpoint.attitudeQuaternion
 
-        return sim_data_types.State(pos, vel, quat, omega)
+        return State(pos, vel, quat, omega)
+
+def simulate(x0, u, tf, dt=5e-4, ll_ctrl_name="pid"):
+    """
+    Fn for wrapping the above methods and numerically integrating the dynamcis.
+    
+    x0 : assumed to be a 12D array of [position, velocity, euler angles (world), angular velocity (body)]
+    u  : feedback law, which is a function of state (12D array) and time (scalar)
+    tf : scalar for final time
+    dt : temporal step size of integrator (significant error for values larger than 5e-4)
+    ll_ctrl_name : the controller for the firmware to use to thrust motors
+    """
+
+    steps = 1+int(tf/dt)
+    X = np.zeros((12, steps))
+    X[:,0] = x0
+
+    x0s = State(pos=x0[0:3], vel=x0[3:6], euler=x0[6:9], omega=x0[9:12])
+    model = Quadrotor(x0s) # normally in Backend in CrazyflieServer
+    uav = CrazyflieSIL("uav", x0s, ll_ctrl_name, model.time, initialState=x0s) # usually self.backend.time
+
+    for tix, ti in enumerate(np.linspace(0., tf, steps)):
+        uav.cmdVelLegacy(*u(model.fullstate(), ti))         # sets mode & set_point
+        action = uav.executeController()                    # calls controller, powerDist, pwm_to_rpm
+        model.step(action, dt)                              # evolves 13D model, uses rown
+        uav.setState(model.state)                           # updates uav state
+        X[:,tix] = model.fullstate()
+    
+    return X
