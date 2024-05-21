@@ -20,13 +20,16 @@ flight_plot(cs_sol, ctrl_roll_cs; plot_title=L"\textrm{CrazySwarm - Roll}")
 
 ## LQR7 with Crazyswarm sim model
 
-function LQR7(x, t; u_target=[0.0, 0.0, 0.0, 12], xref=t->[0., 0., 1., 0., 0., 0., 0.])
-    K_matrix = [0.0 0.2 0.0 0.0 0.2 0.0 0.0;
-            0.2 0.0 0.0 0.2 0.0 0.0 0.0; 
-            0.0 0.0 0.0 0.0 0.0 0.0 0.0;  
-            0.0 0.0 -5.4772 0.0 0.0 -5.5637 0.0]
-    control = K_matrix * (x[[1:6..., 9]] - xref(t)) + u_target
-    return vcat(clamp.(control[1:3], -np.pi/6, np.pi/6)*180/π, 4096 * control[4])
+K_cfc7 = [0.0 0.2 0.0 0.0 0.2 0.0 0.0;
+    0.2 0.0 0.0 0.2 0.0 0.0 0.0; 
+    0.0 0.0 0.0 0.0 0.0 0.0 0.0;  
+    0.0 0.0 -5.4772 0.0 0.0 -5.5637 0.0]
+
+xref_default = t->[0., 0., 1., 0., 0., 0., 0.]
+
+function LQR7(x::Vector, t::Number; K7::Matrix=K_cfc7, u_target::Vector=[0.0, 0.0, 0.0, 12], xref::Function=xref_default)
+    control = K7 * (x[[1:6..., 9]] - xref(t)) + u_target
+    return vcat(clamp.(control[1:3], -π/6, π/6)*180/π, 4096 * control[4])
 end
 
 tf = 8.
