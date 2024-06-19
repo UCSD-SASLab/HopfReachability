@@ -741,9 +741,9 @@ end
 ## Make Parameters for a Set (for the inputs or target)
 function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
     if type ∈ ["box", "Box", "linf", "Linf"]
-        Q = r * Q0
+        Q = r .* Q0
     elseif type ∈ ["ball", "Ball", "l2", "L2"]
-        Q = r^2 * Q0 # works
+        Q = r^2 .* Q0 # works
     else
         error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
     end

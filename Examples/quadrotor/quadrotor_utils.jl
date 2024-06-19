@@ -94,7 +94,13 @@ pushfirst!(pyimport("sys")."path", pwd() * "/Examples/quadrotor/");
 pushfirst!(pyimport("sys")."path", "/Users/willsharpless/crazyflie-firmware/build");
 cs_SIL_dyn = pyimport("crazyswarm_SIL_dynamics")
 
+function cs_control(u)
+    # convert from 
+    return vcat(clamp.(u[1:3], -π/6, π/6)*180/π, clamp(4096 * u[4], 0., 60000))
+end
+
 function sol_wrap(cs_X, tf; dt=5e-4)
+    # wrap in Julia DiffEq solution structure for plotting
     x0, tspan = cs_X[:,1], (0, tf)
     p = [[0.034, 9.81, 0.1, 0.1, 0.1], (x,t)->zeros(4)]
     prob = ODEProblem(quadrotor_12D!, x0, tspan, p)
@@ -105,29 +111,41 @@ function sol_wrap(cs_X, tf; dt=5e-4)
 end
 
 function cs_solve(x0, ut, tf; dt=5e-4, ll_ctrl_name="pid")
-    return sol_wrap(cs_SIL_dyn.simulate(x0, ut, tf; dt, ll_ctrl_name), tf; dt)
+    # solve crazyswarm simulation
+    cs_SIL_dyn = pyimport("crazyswarm_SIL_dynamics")
+    cs_X = cs_SIL_dyn.simulate(x0, ut, tf; dt, ll_ctrl_name)
+    return sol_wrap(cs_X, tf; dt)
 end
 
-# np, rowan = pyimport("numpy"), pyimport("rowan")
+np, rowan = pyimport("numpy"), pyimport("rowan")
 # cs_model, cs_types, cs_SIL = pyimport("crazyswarm_model"), pyimport("sim_data_types"), pyimport("crazyflie_sil");
-# function cs_solve(x0, ut, tf; dt=5e-4, ll_ctrl_name = "pid")
+cs_SIL_dyn = pyimport("crazyswarm_SIL_dynamics")
+function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", smoothing=false, sm_ratio=0.8, smooth_ix=[1,2,3])
     
-#     x0_cs = cs_types.State(pos=x0[1:3], vel=x0[4:6], quat=rowan.from_euler(x0[7:9]...), omega=x0[10:12])
-#     steps = length(0:dt:tf)
-#     X = zeros(12, steps)
-#     X[:,1] = x0
-    
-#     ## Solve with SIL Crazyswarm model
-#     model = cs_model.Quadrotor(x0_cs)
-#     uav = cs_SIL.CrazyflieSIL("name", x0_cs, ll_ctrl_name, model.time, initialState=x0_cs) # usually self.backend.time
+    x0_cs = cs_SIL_dyn.State(pos=x0[1:3], vel=x0[4:6], quat=rowan.from_euler(x0[7:9]...), omega=x0[10:12])
+    steps = length(0:dt:tf)
+    X = zeros(12, steps)
+    X[:,1] = x0
+    u_prev = zeros(4)
 
-#     for (tix, ti) in enumerate(0:dt:tf)
-#         uav.cmdVelLegacy(ut(model.fullstate(), ti)...)            # sets mode & set_point
-#         action = uav.executeController()      # calls controller, powerDist, pwm_to_rpm
-#         model.step(action, dt)                # evolves 13D model, uses FE+rowan
-#         uav.setState(model.state)             # updates internal
-#         X[:,tix] = model.fullstate()
-#     end
+    ## Solve with SIL Crazyswarm model
+    model = cs_SIL_dyn.Quadrotor(x0_cs)
+    uav = cs_SIL_dyn.CrazyflieSIL("name", x0_cs, ll_ctrl_name, model.time, initialState=x0_cs) # usually self.backend.time
 
-#     return X
-# end
+    for (tix, ti) in enumerate(0:dt:tf)
+
+        # Solve new control at frequency 1/ctrl_dt
+        uˢ = (ti/dt) % Int(ctrl_dt/dt) ≈ 0 ? ut(model.fullstate(), ti) : u_prev
+        uˢ[smooth_ix] = smoothing ? (1-sm_ratio) * uˢ[smooth_ix] + sm_ratio * u_prev[smooth_ix] : uˢ[smooth_ix]
+
+        # Evolve sim at frequency 1/dt
+        uav.cmdVelLegacy(uˢ...)               # sets mode & set_point
+        action = uav.executeController()      # calls controller, powerDist, pwm_to_rpm
+        model.step(action, dt)                # evolves 13D model, uses FE+rowan
+        uav.setState(model.state)             # updates internal
+
+        X[:,tix] = model.fullstate()
+    end
+
+    return sol_wrap(X, tf; dt)
+end
