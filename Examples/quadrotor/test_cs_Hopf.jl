@@ -35,7 +35,7 @@ B7 = [	0	0	0	0;	    # x
 
 ## Controls
 
-max_rpy, max_rel_thrust = 0.1 * π/6, 1 # RPY in ±π/6, Thrust in ±1 (+ 12)
+max_rpy, max_rel_thrust = 0.1 * π/6, 1 # RPY in ±π/6, Thrust in ±1 (+ 12), could also try ±2.5
 max_u = [max_rpy, max_rpy, max_rpy, max_rel_thrust];
 Qu, cu = make_set_params(zeros(4), max_u; type="box");
 Qd, cd = zero(Qu), zero(cu);
@@ -87,27 +87,26 @@ controller_kwargs = Dict(
     :warm => true
 )
 
-Hopf_ctrl_longhzn(x, t) = Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (0.02, 0.4, t+4.0 + 1e-5), controller_kwargs...)[1] # FIXME for TV systems (time_p)
+Hopf_ctrl_longhzn(x, t) = cs_control(u_target + Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (.02, 0.4, t+4.0 + 1e-5), controller_kwargs...)[1]) # FIXME for TV systems (time_p)
 
-Hopf_ctrl_medmhzn(x, t) = Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (0.1, 0.5, t+2.0 + 1e-5), controller_kwargs...)[1] # FIXME for TV systems (time_p)
+Hopf_ctrl_medmhzn(x, t) = cs_control(u_target + Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (0.1, 0.5, t+2.0 + 1e-5), controller_kwargs...)[1]) # FIXME for TV systems (time_p)
 
-Hopf_ctrl_shrthzn(x, t) = Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (0.05, 0.25, t+1.0 + 1e-5), controller_kwargs...)[1] # FIXME for TV systems (time_p)
+Hopf_ctrl_shrthzn(x, t) = cs_control(u_target + Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (.05, .25, t+1.0 + 1e-5), controller_kwargs...)[1]) # FIXME for TV systems (time_p)
 
 @time Hopf_ctrl_longhzn(x0, 0.)
 @time Hopf_ctrl_medmhzn(x0, 0.)
 @time Hopf_ctrl_shrthzn(x0, 0.)
 
-sol_lghz = cs_solve_loop(x0, Hopf_ctrl_longhzn, tf)
-sol_mdhz = cs_solve_loop(x0, Hopf_ctrl_medmhzn, tf)
-sol_shhz = cs_solve_loop(x0, Hopf_ctrl_shrthzn, tf)
+# ctrl_thrust_cs = (x,t)->[0., 0., 0., 4.925e4]
+# sol_test, U_test = cs_solve_loop(x0, ctrl_thrust_cs, tf);
 
+@time sol_mdhz, U_mdhz = cs_solve_loop(x0, Hopf_ctrl_medmhzn, tf);
+@time sol_shhz, U_shhz = cs_solve_loop(x0, Hopf_ctrl_shrthzn, tf);
+@time sol_lghz, U_lghz = cs_solve_loop(x0, Hopf_ctrl_longhzn, tf);
 
-flight_plot(sol_lghz, Hopf_ctrl_longhzn; plot_title=L"\textrm{CrazySwarm - Hopf LH:\:Test}")
-flight_plot(sol_mdhz, Hopf_ctrl_longhzn; plot_title=L"\textrm{CrazySwarm - Hopf MH:\:Test}")
-flight_plot(sol_shhz, Hopf_ctrl_longhzn; plot_title=L"\textrm{CrazySwarm - Hopf SH:\:Test}")
-
-
-
+flight_plot(sol_mdhz, U_mdhz; plot_title=L"\textrm{CrazySwarm - Hopf MH:\:Test}")
+flight_plot(sol_shhz, U_shhz; plot_title=L"\textrm{CrazySwarm - Hopf SH:\:Test}")
+flight_plot(sol_lghz, U_lghz; plot_title=L"\textrm{CrazySwarm - Hopf LH:\:Test}")
 
 
 

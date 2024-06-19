@@ -45,8 +45,14 @@ function flight_plot(sol, ctrl_law; traj_path=true, backend=gr, xyz_only=false, 
     v_plot = plot(sol, idxs=(0,4:6), lw=2, ylabel=L"v_i", label=[L"v_x" L"v_y" L"v_z"], xlabel="", xlims=(0., sol.t[end]+0.1))
     ω_plot = plot(sol, idxs=(0,10:12), lw=2, ylabel=L"ω_i", label=[L"ω_ϕ" L"ω_θ" L"ω_ψ"], xlabel="", xlims=(0., sol.t[end]+0.1))
 
-    tt = 0.:0.01:sol.t[end]
-    ctrls_tt = hcat([ctrl_law(x,t) for (x,t) in zip(sol.(tt), tt)]...)
+    tt, ctrls_tt = nothing, nothing
+    if typeof(ctrl_law) <: Function
+        tt = 0.:0.01:sol.t[end]
+        ctrls_tt = hcat([ctrl_law(x,t) for (x,t) in zip(sol.(tt), tt)]...)
+    else typeof(ctrl_law) <: Array{Float64, 2}
+        tt = range(0., sol.t[end], size(ctrl_law,2))
+        ctrls_tt = ctrl_law
+    end
     thrust_plot = plot(tt, ctrls_tt[4,:], ylabel=L"u_{thrust}", label="", xlims=(0., sol.t[end]+0.1)); 
     urpy_plot = plot(tt, ctrls_tt[1,:], ylabel=L"u_{rpy}", label=L"u_ϕ", xlims=(0., sol.t[end]+0.1)); 
     plot!(tt, ctrls_tt[2,:], label=L"u_θ"); plot!(tt, ctrls_tt[3,:], label=L"u_ψ", xlabel=L"t"); 
@@ -124,7 +130,7 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
     
     x0_cs = cs_SIL_dyn.State(pos=x0[1:3], vel=x0[4:6], quat=rowan.from_euler(x0[7:9]...), omega=x0[10:12])
     steps = length(0:dt:tf)
-    X = zeros(12, steps)
+    X, U = zeros(12, steps), zeros(4, steps)
     X[:,1] = x0
     u_prev = zeros(4)
 
@@ -137,6 +143,7 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
         # Solve new control at frequency 1/ctrl_dt
         uˢ = (ti/dt) % Int(ctrl_dt/dt) ≈ 0 ? ut(model.fullstate(), ti) : u_prev
         uˢ[smooth_ix] = smoothing ? (1-sm_ratio) * uˢ[smooth_ix] + sm_ratio * u_prev[smooth_ix] : uˢ[smooth_ix]
+        u_prev = uˢ
 
         # Evolve sim at frequency 1/dt
         uav.cmdVelLegacy(uˢ...)               # sets mode & set_point
@@ -144,8 +151,8 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
         model.step(action, dt)                # evolves 13D model, uses FE+rowan
         uav.setState(model.state)             # updates internal
 
-        X[:,tix] = model.fullstate()
+        X[:,tix], U[:,tix] = model.fullstate(), uˢ
     end
 
-    return sol_wrap(X, tf; dt)
+    return sol_wrap(X, tf; dt), U
 end
