@@ -126,7 +126,7 @@ end
 np, rowan = pyimport("numpy"), pyimport("rowan")
 # cs_model, cs_types, cs_SIL = pyimport("crazyswarm_model"), pyimport("sim_data_types"), pyimport("crazyflie_sil");
 cs_SIL_dyn = pyimport("crazyswarm_SIL_dynamics")
-function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", smoothing=false, sm_ratio=0.8, smooth_ix=[1,2,3])
+function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", smoothing=false, sm_ratio=0.8, smooth_ix=[1,2,3], print_ctrl_t=false)
     
     x0_cs = cs_SIL_dyn.State(pos=x0[1:3], vel=x0[4:6], quat=rowan.from_euler(x0[7:9]...), omega=x0[10:12])
     steps = length(0:dt:tf)
@@ -138,12 +138,16 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
     model = cs_SIL_dyn.Quadrotor(x0_cs)
     uav = cs_SIL_dyn.CrazyflieSIL("name", x0_cs, ll_ctrl_name, model.time, initialState=x0_cs) # usually self.backend.time
 
+    max_ctrl_t = 0.
     for (tix, ti) in enumerate(0:dt:tf)
 
         # Solve new control at frequency 1/ctrl_dt
-        uˢ = (ti/dt) % Int(ctrl_dt/dt) ≈ 0 ? ut(model.fullstate(), ti) : u_prev
-        uˢ[smooth_ix] = smoothing ? (1-sm_ratio) * uˢ[smooth_ix] + sm_ratio * u_prev[smooth_ix] : uˢ[smooth_ix]
-        u_prev = uˢ
+        ctrl_t = @elapsed begin
+            uˢ = (ti/dt) % Int(ctrl_dt/dt) ≈ 0 ? ut(model.fullstate(), ti) : u_prev
+            uˢ[smooth_ix] = smoothing ? (1-sm_ratio) * uˢ[smooth_ix] + sm_ratio * u_prev[smooth_ix] : uˢ[smooth_ix]
+            u_prev = uˢ
+        end
+        max_ctrl_t = max(max_ctrl_t, ctrl_t)
 
         # Evolve sim at frequency 1/dt
         uav.cmdVelLegacy(uˢ...)               # sets mode & set_point
@@ -153,6 +157,7 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
 
         X[:,tix], U[:,tix] = model.fullstate(), uˢ
     end
+    if print_ctrl_t; println("MAX CTRL TIME: $max_ctrl_t s")
 
     return sol_wrap(X, tf; dt), U
 end
