@@ -157,7 +157,7 @@ function cs_solve_loop(x0, ut, tf; dt=5e-4, ctrl_dt=1e-2, ll_ctrl_name = "pid", 
 
         X[:,tix], U[:,tix] = model.fullstate(), uˢ
     end
-    if print_ctrl_t; println("MAX CTRL TIME: $max_ctrl_t s")
+    if print_ctrl_t; println("MAX CTRL TIME: $max_ctrl_t s"); end
 
     return sol_wrap(X, tf; dt), U
 end
