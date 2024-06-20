@@ -28,14 +28,14 @@ A7 = [ 	0	0	0	1	0	0	0;		# x
 B7 = [	0	0	0	0;	    # x
         0	0	0	0;		# y
         0	0	0	0;		# z
-        0   g 	0	0;		# vx_b
-       -g 	0	0	0;		# vy_b
+        0   -g 	0	0;		# vx_b
+        -g 	0	0	0;		# vy_b
         0 	0 	0	1;		# vz_b
         0	0	1	0];		# psi
 
 ## Controls
 
-max_rpy, max_rel_thrust = 0.1 * π/6, 1 # RPY in ±π/6, Thrust in ±1 (+ 12), could also try ±2.5
+max_rpy, max_rel_thrust = 0.5 * π/6, 1 # RPY in ±π/6, Thrust in ±1 (+ 12), could also try ±2.5
 max_u = [max_rpy, max_rpy, max_rpy, max_rel_thrust];
 Qu, cu = make_set_params(zeros(4), max_u; type="box");
 Qd, cd = zero(Qu), zero(cu);
@@ -53,7 +53,8 @@ system = (A7, B7, B7, Qu, cu, Qd, cd, c̃)
 r𝒯 = 1e-1;
 c𝒯 = x_hover[1:nx_model];
 # Q𝒯 = diagm((q𝒯 * [1,1,20,1,1,20,0.5]).^2);
-Q𝒯 = diagm(inv.([1,1,10,1,1,10,0.5]).^2);
+# Q𝒯 = diagm(inv.([1,1,10,1,1,10,0.5]).^2);
+Q𝒯 = diagm(inv.([1,1,2,20,20,10,10]).^2);
 J, Jˢ = make_levelset_fs(c𝒯, r𝒯; Q=Q𝒯);
 
 target = (J, Jˢ, (Q𝒯, c𝒯));
@@ -93,22 +94,24 @@ Hopf_ctrl_medmhzn(x, t) = cs_control(u_target + Hopf_minT(system, target, x[[1:6
 
 Hopf_ctrl_shrthzn(x, t) = cs_control(u_target + Hopf_minT(system, target, x[[1:6..., 9]]; time_p = (.05, .25, t+1.0 + 1e-5), controller_kwargs...)[1]) # FIXME for TV systems (time_p)
 
-@time Hopf_ctrl_longhzn(x0, 0.)
-@time Hopf_ctrl_medmhzn(x0, 0.)
-@time Hopf_ctrl_shrthzn(x0, 0.)
+@time for i=1:10; Hopf_ctrl_longhzn(x0, 0.); end
+@time for i=1:10; Hopf_ctrl_medmhzn(x0, 0.); end
+@time for i=1:10; Hopf_ctrl_shrthzn(x0, 0.); end
 
 # ctrl_thrust_cs = (x,t)->[0., 0., 0., 4.925e4]
 # sol_test, U_test = cs_solve_loop(x0, ctrl_thrust_cs, tf);
 
-@time sol_mdhz, U_mdhz = cs_solve_loop(x0, Hopf_ctrl_medmhzn, tf);
-@time sol_shhz, U_shhz = cs_solve_loop(x0, Hopf_ctrl_shrthzn, tf);
-@time sol_lghz, U_lghz = cs_solve_loop(x0, Hopf_ctrl_longhzn, tf);
+@time sol_mdhz, U_mdhz = cs_solve_loop(x0, Hopf_ctrl_medmhzn, tf, ctrl_dt=5e-3, smoothing=true, sm_ratio=0.9, smooth_ix=[1,2,3,4]);
+@time sol_shhz, U_shhz = cs_solve_loop(x0, Hopf_ctrl_shrthzn, tf, ctrl_dt=5e-3, smoothing=true, sm_ratio=0.9, smooth_ix=[1,2,3,4]);
+# @time sol_lghz, U_lghz = cs_solve_loop(x0, Hopf_ctrl_longhzn, tf, smoothing=true, sm_ratio=0.9, smooth_ix=[1,2,3]);
 
-flight_plot(sol_mdhz, U_mdhz; plot_title=L"\textrm{CrazySwarm - Hopf MH:\:Test}")
-flight_plot(sol_shhz, U_shhz; plot_title=L"\textrm{CrazySwarm - Hopf SH:\:Test}")
-flight_plot(sol_lghz, U_lghz; plot_title=L"\textrm{CrazySwarm - Hopf LH:\:Test}")
+plot_kwargs = Dict(:legend => :right,) #:xlims => (-10, 10), :ylims => (-10, 10), :zlims => (0, 1.5), :legend => :right, :backend=>gr)
+flight_plot(sol_mdhz, U_mdhz; plot_title=L"\textrm{CrazySwarm - Hopf - \:Mid\:Hzn\:Test}", plot_kwargs...)
+flight_plot(sol_shhz, U_shhz; plot_title=L"\textrm{CrazySwarm - Hopf - \:Sht\:Hzn\:Test}", plot_kwargs...)
+# flight_plot(sol_lghz, U_lghz; plot_title=L"\textrm{CrazySwarm - Hopf - \:Lng\:Hzn\:Test}", plot_kwargs...)
 
-
+flight_gif(sol_mdhz, U_mdhz; plot_title=L"\textrm{CrazySwarm - Hopf - \:Mid\:Hzn\:Test}", plot_kwargs...)
+flight_gif(sol_shhz, U_shhz; plot_title=L"\textrm{CrazySwarm - Hopf - \:Sht\:Hzn\:Test}", plot_kwargs...)
 
 stop
 
