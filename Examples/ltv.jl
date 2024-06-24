@@ -58,13 +58,14 @@ DP_solution = hjr_solve(Xg_DP_py, ϕ0Xg_DP, [dynamics], T; BRS=true);
 DP_solution_t = hjr_solve(Xg_DP_py, ϕ0Xg_DP, [dynamics_t], T; BRS=true, one_shot=false, tv=true, th=th);
 DP_solution_f = hjr_solve(Xg_DP_py, ϕ0Xg_DP, [dynamics_f], T; BRS=true);
 
-plot_contour_DP =   plot((fill(Xg_DP, length(T)+1), DP_solution[1]); xigs=xigs, value=false, title="A - DP");
-plot_contour_DP_t = plot((fill(Xg_DP, length(T)+1), DP_solution_t[1]); xigs=xigs, value=false, title="Aₜ - DP")
-plot_contour_DP_f = plot((fill(Xg_DP, length(T)+1), DP_solution_f[1]); xigs=xigs, value=false, title="A(t) - DP")
+solution_grids_DP = convert(Vector{Any}, fill(Xg_DP, length(T)+1))
+plot_contour_DP =   plot((solution_times_DP, DP_solution[1]); xigs=xigs, value=false, title="A - DP");
+plot_contour_DP_t = plot((solution_grids_DP, DP_solution_t[1]); xigs=xigs, value=false, title="Aₜ - DP")
+plot_contour_DP_f = plot((solution_grids_DP, DP_solution_f[1]); xigs=xigs, value=false, title="A(t) - DP")
 
 comparison_fig = plot(plot_contour, plot_contour_t, plot_contour_f, plot_contour_DP, plot_contour_DP_t, plot_contour_DP_f, layout=(2,3), size=(800,500), legend=:bottomleft)
 
 plot_contour_val = plot(solution_f; xigs=xigs, value=true, title="BRS - Hopf", title_value="Value - Hopf")
-plot_contour_DP_f_val = plot((fill(Xg_DP, length(T)+1), DP_solution_f[1]); xigs=xigs, value=true, title="BRS - DP", title_value="Value - DP")
+plot_contour_DP_f_val = plot((solution_grids_DP, DP_solution_f[1]); xigs=xigs, value=true, title="BRS - DP", title_value="Value - DP")
 
 comparison_fig_val = plot(plot_contour_val, plot_contour_DP_f_val, layout=(2,1), size=(600,600), dpi=300, legend=:bottomleft, xlabel="x", ylabel="y", zlabel="V", guidefont=10)

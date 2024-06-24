@@ -7,7 +7,7 @@ np = pyimport("numpy")
 jnp = pyimport("jax.numpy")
 hj = pyimport("hj_reachability")
 
-function hjr_init(c𝒯, Q𝒯, r; shape="box", lb=nothing, ub=nothing, res=100, ϵ = 0.5e-7, stretch=3)
+function hjr_init(c𝒯, Q𝒯, r; shape="box", lb=nothing, ub=nothing, res=100, ϵ = 0.5e-7, stretch=3, bc_grad_factor=0.5)
     # given lb, ub, res, c𝒯, Q, T_shape
 
     dim = length(c𝒯)
@@ -27,7 +27,7 @@ function hjr_init(c𝒯, Q𝒯, r; shape="box", lb=nothing, ub=nothing, res=100,
     if shape == "box"                                                                       
         ϕ0Xg_DP = (jnp.array(np.max(np.abs(np.multiply(diag(Q𝒯), np.subtract(Xg_DP.states, np.array(c𝒯)))), axis=-1)) - r)
     else
-        ϕ0Xg_DP = (jnp.array(np.sum(np.multiply(diag(Q𝒯), np.square(np.subtract(Xg_DP.states, np.array(c𝒯)))), axis=-1)) - r^2) * 0.5
+        ϕ0Xg_DP = (jnp.array(np.sum(np.multiply(diag(Q𝒯), np.square(np.subtract(Xg_DP.states, np.array(c𝒯)))), axis=-1)) - r^2) * bc_grad_factor
     end
 
     return Xg, Xg_DP, ϕ0Xg_DP, xgs

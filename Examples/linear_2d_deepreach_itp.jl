@@ -31,8 +31,9 @@ opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 solution, run_stats = Hopf_BRS(system, target, times; Xg, th=0.05, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=false, check_all=true, printing=true);
 # solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.05, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 
-plot(solution; interpolate=false, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=true, camera=(30, 15), ϵs=0.001)
-# plot(solution_sampled; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=false, value=true, camera=(30, 15))
+plot_hopf = plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false, title="Linear BRS - Hopf")
+# plot_hopf = plot(solution; interpolate=false, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=true, camera=(30, 15), ϵs=0.001)
+# plot_hopf = plot(solution_sampled; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=false, value=true, camera=(30, 15))
 
 function make_interpolation(solution, alltimes, xigs, method="grid", itp_alg_grid=Gridded(Linear()), itp_alg_scatter=Polyharmonic())
     # only supports 2d interp atm
@@ -66,32 +67,64 @@ function fast_interp(_V_itp, tXg, method="grid")
     return Vg
 end
 
-## Test
-alltimes = vcat(0., times...)
-tXg = zeros(1+size(Xg,1), 0)
-for ti=1:length(times)+1
-    tXg = hcat(tXg, vcat(zero(solution[1][ti])[[1],:] .+ alltimes[ti], solution[1][ti]))
-end
-const tXg2 = copy(tXg)
+## Interpolate Hopf Solution
 
-## grid
-V_itp, fast_interp = make_interpolation(solution, alltimes, xigs)
-Vg = @time fast_interp(V_itp, tXg2)
+# ## Test
+# alltimes = vcat(0., times...)
+# tXg = zeros(1+size(Xg,1), 0)
+# for ti=1:length(times)+1
+#     tXg = hcat(tXg, vcat(zero(solution[1][ti])[[1],:] .+ alltimes[ti], solution[1][ti]))
+# end
+# const tXg2 = copy(tXg)
 
-# ## scatter (works but slow)
-# V_itp, fast_interp = make_interpolation(solution, alltimes, xigs, method="scatter")
+# ## grid
+# V_itp, fast_interp = make_interpolation(solution, alltimes, xigs)
 # Vg = @time fast_interp(V_itp, tXg2)
 
-using JLD2, Interpolations
-# save("lin2d_hopf_interp_linear.jld", "V_itp", V_itp, "solution", solution, "alltimes", alltimes, "xigs", xigs)
+# # ## scatter (works but slow)
+# # V_itp, fast_interp = make_interpolation(solution, alltimes, xigs, method="scatter")
+# # Vg = @time fast_interp(V_itp, tXg2)
 
-V_itp_loaded = load("lin2d_hopf_interp_linear.jld")["V_itp"]
-Vg = @time fast_interp(V_itp_loaded, zeros(3, 60000))
+# using JLD2, Interpolations
+# # save("lin2d_hopf_interp_linear.jld", "V_itp", V_itp, "solution", solution, "alltimes", alltimes, "xigs", xigs)
 
-## Plot
-Xg_near = tXg[:, abs.(Vg) .≤ 0.005]
-plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false, camera=(30, 15))
-scatter!(eachrow(Xg_near[2:end,:])..., alpha=0.5)
+# V_itp_loaded = load("lin2d_hopf_interp_linear.jld")["V_itp"]
+# Vg = @time fast_interp(V_itp_loaded, zeros(3, 60000))
 
-x = y = range(-0.95, stop = 0.95, length = 133)
-surface(x, y, (x, y) -> V_itp_loaded(y, x, 1.))
+# ## Plot
+# Xg_near = tXg[:, abs.(Vg) .≤ 0.005]
+# plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false, camera=(30, 15))
+# scatter!(eachrow(Xg_near[2:end,:])..., alpha=0.5)
+
+# x = y = range(-0.95, stop = 0.95, length = 133)
+# surface(x, y, (x, y) -> V_itp_loaded(y, x, 1.))
+
+## Compare With hj_reachability
+
+using PyCall
+include(pwd() * "/src/DP_comparison_utils.jl");
+
+pushfirst!(pyimport("sys")."path", pwd() * "/Examples/DP_comparison_files/");
+np = pyimport("numpy")
+jnp = pyimport("jax.numpy")
+hj = pyimport("hj_reachability")
+hjr_lesslin = pyimport("l2d_ll2d_hj_reachability")
+
+# off_center = [0.25; -0.25]
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xgs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=100, ϵ = 0.5e-7, bc_grad_factor=1.)
+
+gamma = -20.
+# gamma = 5
+lin_dynamics_DP, lesslin_dynamics_DP = hjr_lesslin.Linear2D(), hjr_lesslin.LessLinear2D(gamma=gamma)
+
+DP_solution_BRS = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lin_dynamics_DP, lesslin_dynamics_DP], times; BRS=true)
+DP_solution_BRT = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lin_dynamics_DP, lesslin_dynamics_DP], times; BRS=false)
+
+solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
+plot_DP_BRS_l2d  = plot((solution_times_DP, DP_solution_BRS[1]); xigs=xgs_DP, value=false, title="Linear BRS - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+plot_DP_BRS_ll2d = plot((solution_times_DP, DP_solution_BRS[2]); xigs=xgs_DP, value=false, title="Less Linear (γ=$gamma) BRS - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+plot_DP_BRT_l2d  = plot((solution_times_DP, DP_solution_BRT[1]); xigs=xgs_DP, value=false, title="Linear BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+plot_DP_BRT_ll2d = plot((solution_times_DP, DP_solution_BRT[2]); xigs=xgs_DP, value=false, title="Less Linear (γ=$gamma) BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+blank = plot(title="", axes=false, yaxis=false, xaxis=false, grid=false) 
+
+plot(plot_hopf, plot_DP_BRS_l2d, plot_DP_BRT_l2d, blank, plot_DP_BRS_ll2d, plot_DP_BRT_ll2d, layout=(2,3), size=(750, 500), titlefontsize=10)
