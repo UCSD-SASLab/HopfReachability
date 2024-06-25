@@ -113,18 +113,19 @@ hjr_lesslin = pyimport("l2d_ll2d_hj_reachability")
 # off_center = [0.25; -0.25]
 Xg_DP, Xg_DPpy, ϕ0Xg_DP, xgs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=100, ϵ = 0.5e-7, bc_grad_factor=1.)
 
-gamma = -20.
-# gamma = 5
-lin_dynamics_DP, lesslin_dynamics_DP = hjr_lesslin.Linear2D(), hjr_lesslin.LessLinear2D(gamma=gamma)
+gamma = -20
+mu = 0
+alpha = 0
+lin_dynamics_DP, lesslin_dynamics_DP = hjr_lesslin.Linear2D(), hjr_lesslin.LessLinear2D(gamma=gamma, mu=mu, alpha=alpha)
 
 DP_solution_BRS = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lin_dynamics_DP, lesslin_dynamics_DP], times; BRS=true)
 DP_solution_BRT = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lin_dynamics_DP, lesslin_dynamics_DP], times; BRS=false)
 
 solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
 plot_DP_BRS_l2d  = plot((solution_times_DP, DP_solution_BRS[1]); xigs=xgs_DP, value=false, title="Linear BRS - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
-plot_DP_BRS_ll2d = plot((solution_times_DP, DP_solution_BRS[2]); xigs=xgs_DP, value=false, title="Less Linear (γ=$gamma) BRS - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+plot_DP_BRS_ll2d = plot((solution_times_DP, DP_solution_BRS[2]); xigs=xgs_DP, value=false, title="Less (γ=$gamma, μ=$mu, α=$alpha) BRS - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
 plot_DP_BRT_l2d  = plot((solution_times_DP, DP_solution_BRT[1]); xigs=xgs_DP, value=false, title="Linear BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
-plot_DP_BRT_ll2d = plot((solution_times_DP, DP_solution_BRT[2]); xigs=xgs_DP, value=false, title="Less Linear (γ=$gamma) BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
-blank = plot(title="", axes=false, yaxis=false, xaxis=false, grid=false) 
+plot_DP_BRT_ll2d = plot((solution_times_DP, DP_solution_BRT[2]); xigs=xgs_DP, value=false, title="Less (γ=$gamma, μ=$mu, α=$alpha) BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...));
+blank = plot(title="", axes=false, yaxis=false, xaxis=false, grid=false)
 
-plot(plot_hopf, plot_DP_BRS_l2d, plot_DP_BRT_l2d, blank, plot_DP_BRS_ll2d, plot_DP_BRT_ll2d, layout=(2,3), size=(750, 500), titlefontsize=10)
+plot(plot_hopf, plot_DP_BRS_l2d, plot_DP_BRT_l2d, blank, plot_DP_BRS_ll2d, plot_DP_BRT_ll2d, layout=(2,3), size=(750, 500), titlefontsize=8, legendfont=6)

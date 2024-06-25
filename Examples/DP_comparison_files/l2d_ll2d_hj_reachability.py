@@ -71,7 +71,9 @@ class LessLinear2D(hj.ControlAndDisturbanceAffineDynamics):
                 disturbance_mode="max",
                 control_space=None,
                 disturbance_space=None,
-                gamma=1.
+                gamma=0.,
+                mu=0.,
+                alpha=1.
                 ):
 
         if control_space is None:
@@ -82,12 +84,12 @@ class LessLinear2D(hj.ControlAndDisturbanceAffineDynamics):
 
         super().__init__(control_mode, disturbance_mode, control_space, disturbance_space)
 
-        self.gamma = gamma
         self.a11, self.a12, self.a21, self.a22 = a11, a12, a21, a22
         self.b1, self.b2, self.c1, self.c2 = b1, b2, c1, c2
+        self.gamma, self.mu, self.alpha = gamma, mu, alpha
 
     def open_loop_dynamics(self, x, time):
-        xdot1 = self.a11 * x[0] + self.a12 * x[1]
+        xdot1 = self.a11 * x[0] + self.a12 * x[1] + self.mu * jnp.sin(self.alpha * x[0]) * x[1] * x[1]
         xdot2 = self.a21 * x[0] + self.a22 * x[1] - self.gamma * x[1] * x[0] * x[0]
         return jnp.array([xdot1, xdot2])
     
