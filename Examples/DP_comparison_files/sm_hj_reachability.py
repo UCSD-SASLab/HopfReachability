@@ -19,6 +19,8 @@ import hj_reachability as hj
 
 # In[8]:
 
+# New Test Edit
+# <- see how the new lines turn green, and the file yellow with an "M"
 
 class SlowManifold(hj.ControlAndDisturbanceAffineDynamics):
     def __init__(self, mu=-0.05, lambduh=-1.0,
