@@ -113,9 +113,9 @@ hjr_lesslin = pyimport("l2d_ll2d_hj_reachability")
 # off_center = [0.25; -0.25]
 Xg_DP, Xg_DPpy, ϕ0Xg_DP, xgs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=100, ϵ = 0.5e-7, bc_grad_factor=1.)
 
-gamma = -20
-mu = 0
-alpha = 0
+gamma = 20
+mu = 20
+alpha = -20
 lin_dynamics_DP, lesslin_dynamics_DP = hjr_lesslin.Linear2D(), hjr_lesslin.LessLinear2D(gamma=gamma, mu=mu, alpha=alpha)
 
 DP_solution_BRS = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lin_dynamics_DP, lesslin_dynamics_DP], times; BRS=true)
@@ -129,3 +129,5 @@ plot_DP_BRT_ll2d = plot((solution_times_DP, DP_solution_BRT[2]); xigs=xgs_DP, va
 blank = plot(title="", axes=false, yaxis=false, xaxis=false, grid=false)
 
 plot(plot_hopf, plot_DP_BRS_l2d, plot_DP_BRT_l2d, blank, plot_DP_BRS_ll2d, plot_DP_BRT_ll2d, layout=(2,3), size=(750, 500), titlefontsize=8, legendfont=6)
+
+plot(plot_hopf, plot_DP_BRT_ll2d, size=(600, 300), titlefontsize=8, legendfont=6)
