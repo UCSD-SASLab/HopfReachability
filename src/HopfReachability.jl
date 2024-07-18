@@ -28,7 +28,7 @@ end
 ## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
 function Hopf_BRS(system, target, T;
                   opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
-                  Xg=nothing, lg=0, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
+                  X=nothing, Xg=nothing, lg=0, N=10, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
 
@@ -77,43 +77,42 @@ function Hopf_BRS(system, target, T;
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
     xigs = nothing
+    X = isnothing(X) ? Xg : X # legacy naming
 
     ## System Data
-    index, ϕX, B⁺, ϕB⁺, B⁺T, ϕB⁺T = [], [], [], [], [], []
-    averagetimes, pointstocheck, N, last_bi = [], [], 0, 1
+    index, ϕX, XsT, ϕXsT = [], [], [], []
+    averagetimes, pointstocheck, last_bi = [], [], 1
     opt_data = opt_tracking ? [] : nothing
 
     ## Precomputation
     if printing; println("\nPrecomputation, ..."); end
     Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
 
-    ## Grid Set Up
-    if isnothing(Xg)
-        Xg, xigs, _ = make_grid(grid_p..., nx; shift=ϵ, return_all=true)
+    ## No Points? Make Grid
+    if isnothing(X)
+        X, xigs, _ = make_grid(grid_p..., nx; shift=ϵ, return_all=true)
     elseif moving_grid
-        # N = Int.([floor(inv(norm(Xg[i][:,1] - Xg[i][:,2]))) for i in eachindex(Xg)])
-        N = [10 for i in eachindex(Xg)] # TODO: arbitrary atm, fix
+        # N = Int.([floor(inv(norm(X[i][:,1] - X[i][:,2]))) for i in eachindex(X)])
+        N = [10 for i in eachindex(X)] # TODO: arbitrary atm, fix
     end
 
     ## Compute Near-Boundary set of Target in X
     if simple_problem
         
         @suppress begin; tick(); end # timing
-        ϕX = J(Xg)
+        ϕX = J(X)
         push!(averagetimes, tok() / length(ϕX)) # initial grid eval time
 
         if check_all
-            B⁺, ϕB⁺ = Xg, ϕX
             index = warm && warm_pattern == "spiral" ? mat_spiral(lg, lg)[1] : collect(1:length(ϕX))
         else
             index = boundary(ϕX; lg, N, nx)
-            B⁺, ϕB⁺ = Xg[:, index], ϕX[index] 
         end
 
-        push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺)) # for plotting ϕ0
-        push!(pointstocheck, length(ϕB⁺))
+        push!(XsT, X[:, index]); push!(ϕXsT, ϕX[index]) # for plotting ϕ0
+        push!(pointstocheck, length(ϕX[index]))
     end
-    warm_old, warm_new = zero(B⁺), zero(B⁺) # warm matrices
+    warm_old, warm_new = zero(X), zero(X) # warm matrices
 
     prgame = game == "reach" ? "Reach" : "Avoid"
     prerror = error ? " with Linear Error" : ""
@@ -123,11 +122,10 @@ function Hopf_BRS(system, target, T;
     ## Loop Over Time Frames
     for Tix in eachindex(T)
 
-        if printing; println("   for t=-", T[Tix], "..."); end
         Ti = T[Tix]
         tix = findfirst(abs.(t .-  Ti) .< th/2);
 
-        Xgi = !moving_grid ? Xg : Xg[Tix]
+        Xi = !moving_grid ? X : X[Tix]
         Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
         
         ## Update Near-Boundary set for moving problems
@@ -136,23 +134,18 @@ function Hopf_BRS(system, target, T;
             lgi = moving_grid ? lg[Tix] : lg
 
             J, Jˢ = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
-            ϕX = J(Xgi)
+            ϕX = J(Xi)
             if check_all
-                B⁺, ϕB⁺, index = Xgi, ϕX, collect(1:length(ϕX))
+                index = collect(1:length(ϕX))
             else
                 index = boundary(ϕX; lg=lgi, N=Ni, nx)
-                B⁺, ϕB⁺ = Xgi[:, index], ϕX[index] 
             end
 
-            push!(B⁺T, copy(B⁺)); push!(ϕB⁺T, copy(ϕB⁺))
-        end
-
-        if isempty(index) && printing 
-            println("At T=" * string(Ti) * ", no x in the grid s.t. |J(x)| < " * string(ϵ))
+            push!(XsT, X[:, index]); push!(ϕXsT, ϕX[index]) # FIXME: adds 2x as many points to the solution (who can keep track? need soln struct)
         end
 
         ## Map X to Z
-        B⁺z = Φ(Ti) * B⁺
+        Z = Φ(Ti) * X
         target = (J, Jˢ, (Ai, ci))
 
         ## Packaging Hdata, tbH
@@ -163,9 +156,20 @@ function Hopf_BRS(system, target, T;
         index_pts = sampling ? sample(1:length(index),samples) : eachindex(index) # sample for speed test
         opt_data_Ti = opt_tracking ? [] : nothing
 
+        if printing
+            if !isempty(index)
+                time_str = "   for t=-$(T[Tix]),"
+                gap_str = *([" " for _=1:17 - length(time_str)]...)
+                pt_str = "($(length(index_pts)) pts)..."
+                println(time_str * gap_str * pt_str)
+            else
+                println("At t=-$(T[Tix]), no x in the grid s.t. |J(x)| < " * string(ϵ))
+            end
+        end
+
         @suppress begin; tick(); end # timing
 
-        ## Solve Over Grid (near ∂ID if !check_all)
+        ## Solve Inputted Points
         for bi in index_pts
 
             ## Warm Starting 
@@ -181,8 +185,7 @@ function Hopf_BRS(system, target, T;
             end
 
             ## Solve Hopf
-            z = B⁺z[:, bi]
-            ϕB⁺[bi], dϕdz, v_path = opt_method(system, target, z; p2, game, tbH, opt_p, v_init)
+            ϕX[bi], dϕdz, v_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, v_init)
             
             warm_new[:, bi] = copy(dϕdz)
             if bi == last(index_pts); warm_old = copy(warm_new); end # overwrite warm matrix
@@ -191,24 +194,23 @@ function Hopf_BRS(system, target, T;
             if opt_tracking
                 vals = zeros(size(v_path, 2))
                 for (vi, v) in enumerate(eachcol(v_path))
-                    vals[vi] = Hopf(system, target, tbH, z, v_path[:,vi]; p2, game)
+                    vals[vi] = Hopf(system, target, tbH, Z[:, bi], v_path[:,vi]; p2, game)
                 end
                 push!(opt_data_Ti, (v_path, vals)); 
             end
         end
 
         ## Store Data
+
         push!(averagetimes, tok()/length(index_pts));
         push!(pointstocheck, length(index_pts));
-        push!(B⁺T, copy(B⁺))
-        push!(ϕB⁺T, copy(ϕB⁺))
+        push!(XsT, X[:, index])
+        push!(ϕXsT, ϕX[index])
         if opt_tracking; push!(opt_data, opt_data_Ti); end
 
         ## Update Near-Boundary index to intermediate solution
-        if simple_problem && Tix != length(T) && !check_all
-            ϕX[index] = ϕB⁺
+        if !check_all && simple_problem && Tix != length(T)
             index = boundary(ϕX; lg, N, nx)
-            B⁺, ϕB⁺ = Xg[:, index], ϕX[index]
         end
     end
     
@@ -217,21 +219,21 @@ function Hopf_BRS(system, target, T;
     pr_totaltime = round(totaltime, sigdigits=sigdigits)
     pr_pointstocheck = Int.(pointstocheck)
     pr_averagetimes = round.(float.(averagetimes), sigdigits=sigdigits)
-    min_ϕB⁺T = round.(minimum.(ϕB⁺T), sigdigits=sigdigits)
-    max_ϕB⁺T = round.(maximum.(ϕB⁺T), sigdigits=sigdigits)
+    min_ϕXsT = !isempty(ϕXsT) ? round.(minimum.(ϕXsT), sigdigits=sigdigits) : NaN
+    max_ϕXsT = !isempty(ϕXsT) ? round.(maximum.(ϕXsT), sigdigits=sigdigits) : NaN
 
-    if plotting; plot((B⁺T, ϕB⁺T); xigs); end
+    if plotting; plot((XsT, ϕXsT); xigs); end
     if printing; println("TOTAL TIME: $pr_totaltime s"); end
-    if printing; println("\nAt t = $(vcat(0., T)) over Xg,"); end
+    if printing; println("\nAt t = $(vcat(0., T)) over X,"); end
     if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
     if printing; println("  MEAN TIME: $pr_averagetimes s/pt"); end
-    if printing; println("  MIN VALUE: $min_ϕB⁺T"); end
-    if printing; println("  MAX VALUE: $max_ϕB⁺T \n"); end
+    if printing; println("  MIN VALUE: $min_ϕXsT"); end
+    if printing; println("  MAX VALUE: $max_ϕXsT \n"); end
     run_stats = (totaltime, pointstocheck, averagetimes)
 
-    ## Return arrays of B⁺ (near-boundary or all pts) over time and corresponding ϕ's, where the first is target (1 + length(T) arrays)
+    ## Return array of matrices of solved points (near-boundary or all pts) over time and corresponding values, where the first is target (1 + length(T) arrays)
     # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
-    return (B⁺T, ϕB⁺T), run_stats, opt_data
+    return (XsT, ϕXsT), run_stats, opt_data
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
@@ -751,14 +753,16 @@ function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
 end
 
 ## Find points near boundary ∂ of f(z) = 0
-function boundary(ϕ; lg, N, nx, δ = 20/N) ## MULTI-D FIX
+function boundary(ϕ; lg, N, nx, δ = 1/N) ## MULTI-D FIX
+
+    @assert (isdefined(Main, Symbol("ImageFiltering"))) "Load ImageFiltering.jl for boundary convolution (`using ImageFiltering`)."
 
     A = Float64.(abs.(reshape(ϕ, [lg for i=1:nx]...)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     # A = Float64.(abs.(reshape(ϕ, lg, lg)) .< δ); # near ∂ID |J*(XY)| < 5/N, signal
     B = 1/(N/2)^2 * ones([Int(floor(N/2)) for i=1:nx]...); # kernel
     # B = 1/(N/2)^2 * ones(Int(floor(N/2)),Int(floor(N/2))); # kernel
 
-    ind = imfilter(A, centered(B), Fill(0)); # cushion boundary w conv
+    ind = Main.ImageFiltering.imfilter(A, Main.ImageFiltering.centered(B), Main.ImageFiltering.Fill(0)); # cushion boundary w conv
 
     return findall(ind[:] .> 0); # index of XY near ∂ID
 end
@@ -857,8 +861,8 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
     zplot=false, interpolate=false, pal_colors=["red", "blue"], alpha=0.5, interp_alg=ScatteredInterpolation.Polyharmonic(),
     title=nothing, value_fn=false, xlims=[-2, 2], ylims=[-2, 2], base_plot=nothing)
 
-    B⁺T, ϕB⁺T = solution
-    nx=size(B⁺T[1])[1]
+    XsT, ϕXsT = solution
+    nx=size(XsT[1])[1]
     if interpolate; @assert (isdefined(Main, Symbol("PlotlyJS"))) "Load PlotlyJS.jl for isosurfaces (`using PlotlyJS`)."; end
     if nx > 2 && value_fn; println("4D plots are not supported yet, can't plot Value fn"); value_fn = false; end
 
@@ -872,7 +876,7 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
     plots = zplot ? [Xplot, Zplot] : [Xplot]
     if value_fn; vfn_plots = zplot ? [Main.Plots.plot(title="Value"), Main.Plots.plot(title="Value")] : [Main.Plots.plot(title="Value")]; end
 
-    B⁺Tc, ϕB⁺Tc = copy(B⁺T), copy(ϕB⁺T)
+    XsTc, ϕXsTc = copy(XsT), copy(ϕXsT)
     
     ϕlabels = "t=" .* string.(-T)
     Jlabels = "Target, t=" .* string.(-T) .* " -> ".* string.(vcat(0.0, -T[1:end-1]))
@@ -885,15 +889,15 @@ function plot_nice(T, solution; Φ=nothing, simple_problem=true, ϵs = 0.1, ϵc 
     ## Zipping Target to Plot Variation in Z-space over Time (already done in moving problems)
     if simple_problem && (length(T) > 1)
         for i = 3 : 2 : 2*length(T)
-            insert!(B⁺Tc, i, B⁺T[1])
-            insert!(ϕB⁺Tc, i, ϕB⁺T[1])
+            insert!(XsTc, i, XsT[1])
+            insert!(ϕXsTc, i, ϕXsT[1])
         end
     end
 
     if nx > 2 && interpolate; plotly_pl = zplot ? [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}(), Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()] : [Array{Main.PlotlyJS.GenericTrace{Dict{Symbol, Any}},1}()]; end
 
     for (j, i) in enumerate(1 : 2 : 2*length(T))        
-        B⁺0, B⁺, ϕB⁺0, ϕB⁺ = B⁺Tc[i], B⁺Tc[i+1], ϕB⁺Tc[i], ϕB⁺Tc[i+1]
+        B⁺0, B⁺, ϕB⁺0, ϕB⁺ = XsTc[i], XsTc[i+1], ϕXsTc[i], ϕXsTc[i+1]
         Bs = zplot ? [B⁺0, B⁺, Φ(-T[j]) * B⁺0, Φ(-T[j]) * B⁺] : [B⁺0, B⁺]
 
         for (bi, b⁺) in enumerate(Bs)
