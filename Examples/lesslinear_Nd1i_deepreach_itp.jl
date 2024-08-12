@@ -74,7 +74,7 @@ function compute_jaccard_overtime(solution_1, solution_2, Xg_shared; tix=1:lengt
 end
 
 using Interpolations, JLD
-LessLinear2D_interpolations = load("LessLinear2D1i_interpolations_res5e-3.jld", "LessLinear2D_interpolations");
+LessLinear2D_interpolations = load("LessLinear2D1i_interpolations_res1e-2.jld", "LessLinear2D_interpolations");
 V_DP_itp = LessLinear2D_interpolations["g0_m0_a0"]
 
 alltimes = vcat(0.,times)
@@ -112,16 +112,15 @@ jacc = compute_jaccard_overtime(solution_2d, solution_DP, Xg_2d)
 annotate!(plot_hopf_slice, 0.25, -0.75, ("Jaccard = $(round(jacc, digits=2))", 8, :black, :left))
 plot(plot_hopf_slice, plot_DP, size=(800,400))
 
-
 ## Total Jaccard
 
 solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_itps_DP, Pis_xi, alltimes[ti], Xg) for ti=1:length(times)+1]);
 solution_DP = (solution[1], solution_DP_values);
 total_jacc = compute_jaccard_overtime(solution, solution_DP, Xg)
 
-using PlotlyJS
-plot_hopf = plot_nice(times, solution; interpolate=true, alpha=0.1); #using PlotlyJS
-plot_DP = plot_nice(times, solution_DP; interpolate=true, alpha=0.1); #using PlotlyJS
+# using PlotlyJS
+# plot_hopf = plot_nice(times, solution; interpolate=true, alpha=0.1); #using PlotlyJS
+# plot_DP = plot_nice(times, solution_DP; interpolate=true, alpha=0.1); #using PlotlyJS
 
 ## Target Test
 
@@ -141,9 +140,54 @@ plot_DP = plot_nice(times, solution_DP; interpolate=true, alpha=0.1); #using Plo
 
 # plot(plot_target_N_os, plot_target_N_comb, size=(800,400))
 
+## 3-Plane Plot
+
+N = 15
+Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
+V_N_itp(V_i_itps, Pis, t, XgN) = sum(fast_interp(V_i_itps[i], make_tXg(t, Pis[i] * XgN)) for i=1:N-1)
+
+# V_DP_itp = LessLinear2D_interpolations["g-20_m20_a1"]
+# V_i_NL_itps_DP = [V_DP_itp for i=1:N-1]
+
+# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m0_a0"], LessLinear2D_interpolations["g-20_m0_a0"]] # level 1
+# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m-20_a1"], LessLinear2D_interpolations["g-20_m-20_a1"]] # level 2
+# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m-20_a20"], LessLinear2D_interpolations["g20_m20_a20"]] # level 3
+
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m0_a0"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m0_a0"] for i=1:(N-1)/2], dims=1)
+V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m0_a0"] for i=1:(N-1)/2], dims=1) 
+
+plots_DP, titles = [], ["$(N)D DP, xn-xi plane", "$(N)D DP, xi-xj plane","$(N)D DP, xn-(xi=xj) plane"]
+for i=1:3
+
+    XgN = zeros(N,size(Xg_2d,2))
+    if i == 1
+        XgN[1:2,:] = Xg_2d
+    elseif i == 2
+        XgN[2,:] = Xg_2d[1,:]
+        XgN[3,:] = Xg_2d[2,:]
+    else
+        XgN[1,:] = Xg_2d[1,:]
+        XgN[2:end, :] = (Xg_2d[2,:] .* ones(size(Xg_2d,2), N-1))'
+    end
+
+    solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_NL_itps_DP, Pis_xi, alltimes[ti], XgN) for ti=1:length(times)+1]);
+    solution_DP = (solution_grids_2d, solution_DP_values);
+    plot_DP = plot(solution_DP; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs_2d, value=false, title=titles[i], legend=false, alpha=0.5)
+    push!(plots_DP, plot_DP)
+end
+plot(plots_DP..., layout=(1,3), size=(900,300))
+
+
+
+
 
 
 stop
+
+
+
+
+
 
 ## Interpolate High-D Solutions
 

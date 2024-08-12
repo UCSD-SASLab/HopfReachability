@@ -16,7 +16,7 @@ Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & �
 system, game = (A, reshape(B₁, 2, 1), reshape(B₂, 2, 1), Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
-Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.25
+Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.15
 J, Jˢ = make_levelset_fs(center, radius; Q, type="ellipse")
 target = (J, Jˢ, (Q, center, radius));
 
@@ -121,7 +121,7 @@ p_sets = [
 LessLinear2D_interpolations = Dict("hopf" => V_itp_hopf)
 LessLinear2D_plots = Dict("hopf" => plot_hopf_leg)
 
-Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=400, ϵ = 0.5e-7, bc_grad_factor=1.)
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7, bc_grad_factor=1.)
 solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
 
 for p_set in p_sets
@@ -140,18 +140,57 @@ for p_set in p_sets
 
     solution_ll2d_BRT_DP = (solution_times_DP, DP_solution_BRT[1]); # BRT has more stable DP solns
 
-    V_itp_DP = make_interpolation(solution_ll2d_BRT_DP, alltimes, xigs_DP)
+    V_itp_DP = make_interpolation(solution_ll2d_BRT_DP, alltimes; xigs=xigs_DP)
     # Vg_DP = @time fast_interp(V_itp_DP, tXg2)
 
     # save("llin2d_1i_g$(gamma)_m$(mu)_a$(alpha)_DP_interp_linear_res.jld", "V_itp", V_itp_DP, "solution", solution_ll2d_BRT_DP, "alltimes", alltimes, "xigs", xigs_DP)
     LessLinear2D_interpolations["g$(gamma)_m$(mu)_a$(alpha)"] = V_itp_DP
     LessLinear2D_plots["g$(gamma)_m$(mu)_a$(alpha)"] = plot_DP_BRT_ll2d
 end
-
-save("LessLinear2D_1i_v2_interpolations_res5e-3.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
-
 full_plot = plot(plot_hopf_leg, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
-savefig(full_plot, "LessLinear2d1i_v2_plot_res5e-3.png")
+
+# save("LessLinear2D1i_interpolations_res1e-2_r15e-2.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
+# savefig(full_plot, "LessLinear2d1i_plot_res1e-2_r15e-2.png")
+
+## Test Combinations
+
+N = 7
+alltimes = vcat(0., times)
+make_tXg(_t, _Xg) = vcat(_t*ones(size(_Xg,2))', _Xg)
+Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
+V_N_itp(V_i_itps, Pis, t, XgN) = sum(fast_interp(V_i_itps[i], make_tXg(t, Pis[i] * XgN)) for i=1:N-1)
+
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m-20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m-20_a1"] for i=1:(N-1)/2], dims=1) 
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m-20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g20_m-20_a1"] for i=1:(N-1)/2], dims=1) 
+V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g-20_m-20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m-20_a1"] for i=1:(N-1)/2], dims=1) 
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m20_a20"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m-20_a-20"] for i=1:(N-1)/2], dims=1) 
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m-20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g20_m20_a20"] for i=1:(N-1)/2], dims=1) 
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g-20_m-20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g20_m20_a20"] for i=1:(N-1)/2], dims=1) 
+# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g-20_m-20_a1"] for i=1:(N-1)/4], 
+#                      [LessLinear2D_interpolations["g20_m-20_a1"] for i=1:(N-1)/4],
+#                      [LessLinear2D_interpolations["g20_m20_a20"] for i=1:(N-1)/4],
+#                      [LessLinear2D_interpolations["g-20_m-20_a-20"] for i=1:(N-1)/4], dims=1) 
+
+# V_i_NL_itps_DP
+
+plots_DP, titles = [], ["$(N)D DP, xn-xi plane", "$(N)D DP, xi-xj plane","$(N)D DP, xn-(xi=xj) plane"]
+for i=1:3
+    XgN = zeros(N,size(Xg,2))
+    if i == 1
+        XgN[1:2,:] = Xg
+    elseif i == 2
+        XgN[2,:] = Xg[1,:]
+        XgN[3,:] = Xg[2,:]
+    else
+        XgN[1,:] = Xg[1,:]
+        XgN[2:end, :] = (Xg[2,:] .* ones(size(Xg,2), N-1))'
+    end
+    solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_NL_itps_DP, Pis_xi, alltimes[ti], XgN) for ti=1:length(times)+1]);
+    solution_DP = (solution_times_DP, solution_DP_values);
+    plot_DP = plot(solution_DP; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false, title=titles[i], legend=false, alpha=0.5)
+    push!(plots_DP, plot_DP)
+end
+plot(plots_DP..., layout=(1,3), size=(900,300))
 
 ## Test 3D solves of separate Systems
 
