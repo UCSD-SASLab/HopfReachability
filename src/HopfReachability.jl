@@ -29,7 +29,7 @@ end
 function Hopf_BRS(system, target, T;
                   opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
                   X=nothing, Xg=nothing, lg=0, N=10, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
-                  p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
+                  p2=true, game="reach", plotting=false, printing=false, zplot=false, check_all=true,
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
 
     if opt_method == Hopf_cd
@@ -76,8 +76,6 @@ function Hopf_BRS(system, target, T;
     J, Jˢ, Jp = target
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
     t = collect(th: th: T[end])
-    xigs = nothing
-    X = isnothing(X) ? Xg : X # legacy naming
 
     ## System Data
     index, ϕX, XsT, ϕXsT = [], [], [], []
@@ -89,12 +87,8 @@ function Hopf_BRS(system, target, T;
     Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
 
     ## No Points? Make Grid
-    if isnothing(X)
-        X, xigs, _ = make_grid(grid_p..., nx; shift=ϵ, return_all=true)
-    elseif moving_grid
-        # N = Int.([floor(inv(norm(X[i][:,1] - X[i][:,2]))) for i in eachindex(X)])
-        N = [10 for i in eachindex(X)] # TODO: arbitrary atm, fix
-    end
+    X = isnothing(X) ? Xg : X # legacy naming
+    X, xigs, _ = isnothing(X) ? make_grid(grid_p..., nx; shift=ϵ, return_all=true) : (X, nothing, nothing)
 
     ## Compute Near-Boundary set of Target in X
     if simple_problem
@@ -106,6 +100,10 @@ function Hopf_BRS(system, target, T;
         if check_all
             index = warm && warm_pattern == "spiral" ? mat_spiral(lg, lg)[1] : collect(1:length(ϕX))
         else
+            if moving_grid
+                # N = Int.([floor(inv(norm(X[i][:,1] - X[i][:,2]))) for i in eachindex(X)])
+                N = [10 for i in eachindex(X)] # FIXME: arbitrary atm
+            end
             index = boundary(ϕX; lg, N, nx)
         end
 
@@ -153,14 +151,13 @@ function Hopf_BRS(system, target, T;
         tbH = (intH, Hdata)
 
         ## Pre solve details
-        index_pts = sampling ? sample(1:length(index),samples) : eachindex(index) # sample for speed test
         opt_data_Ti = opt_tracking ? [] : nothing
 
         if printing
             if !isempty(index)
                 time_str = "   for t=-$(T[Tix]),"
                 gap_str = *([" " for _=1:17 - length(time_str)]...)
-                pt_str = "($(length(index_pts)) pts)..."
+                pt_str = "($(length(index)) pts)..."
                 println(time_str * gap_str * pt_str)
             else
                 println("At t=-$(T[Tix]), no x in the grid s.t. |J(x)| < " * string(ϵ))
@@ -170,7 +167,7 @@ function Hopf_BRS(system, target, T;
         @suppress begin; tick(); end # timing
 
         ## Solve Inputted Points
-        for bi in index_pts
+        for bi in eachindex(index)
 
             ## Warm Starting 
             if warm
@@ -234,6 +231,238 @@ function Hopf_BRS(system, target, T;
     ## Return array of matrices of solved points (near-boundary or all pts) over time and corresponding values, where the first is target (1 + length(T) arrays)
     # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
     return (XsT, ϕXsT), run_stats, opt_data
+end
+
+## Solve Hopf Reachability over Grid for given system, target, ∫Hamiltonian and lookback time(s) T
+function Hopf_BRS_metal(system, target, T;
+                  opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
+                  X=nothing, Xg=nothing, lg=0, N=10, ϵ=0.5e-7, space_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
+                  p2=true, game="reach", plotting=false, printing=false, zplot=false, check_all=true, num_samples=20000, sampling_method="uniform",
+                  moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, V_init=nothing, admm=false, make_grid=false)
+
+    if opt_method == Hopf_cd
+        # opt_p = isnothing(opt_p) ? (0.01, 2, ϵ, 100, 5, 10, 400) : opt_p # Faster
+        opt_p = isnothing(opt_p) ? (0.01, 5, ϵ, 500, 20, 20, 2000) : opt_p # Safer
+        admm = false
+    elseif opt_method == Hopf_admm
+        opt_p = isnothing(opt_p) ? (1e-1, 1e-2, 1e-5, 100) : opt_p 
+        admm = true
+    elseif opt_method == Hopf_admm_cd
+        opt_p = isnothing(opt_p) ? ((1e-0, 1e-0, 1e-5, 3), (0.01, 2, ϵ, 50, 1, 3, 125), 1, 1, 10) : opt_p 
+        admm = true
+    end
+
+    ## System
+    simple_problem = !moving_grid && !moving_target
+    preH, intH, HJoc = input_shapes ∈ ["ball", "Ball", "BALL"] ? (preH_ball, intH_ball, HJoc_ball) : 
+                      (input_shapes ∈ ["box", "Box", "BOX"] ? (preH_box, intH_box, HJoc_box) : 
+                      (preH, intH, HJoc))
+    preH, intH, HJoc = error ? (preH_error, intH_error, HJoc_error) : (preH, intH, HJoc) # forces input_shapes to be box atm
+    
+    if printing; 
+        pr_A = typeof(system[1]) <: Function ? "A(t)" : (length(size(system[1])) == 1 ? "A[t]" : "A")
+        pr_B₁ = typeof(system[2]) <: Function ? "B₁(t)" : (length(size(system[2])) == 1 ? "B₁[t]" : "B₁")
+        pr_B₂ = typeof(system[3]) <: Function ? "B₂(t)" : (length(size(system[3])) == 1 ? "B₂[t]" : "B₂")
+        pr_affine = length(system) >= 8 ? (typeof(system[8]) <: Function ? "+ c(t) " : (length(size(system[8][1])) == 0 ? "+ c " : "+ c[t] ")) : ""
+        pr_E = length(system) == 9 ? (typeof(system[9]) <: Function ? "Eδ(t)" : (length(size(system[9])) == 1 ? "Eδ[t]" : "Eδ")) : ""
+        
+        pr_x_dim = typeof(system[1]) <: Function ? size(system[1](0),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
+        pr_u_dim, pr_d_dim = size(system[4])[1], size(system[6])[1]
+        pr_u_bds, pr_d_bds = preH == preH_ball ? ("𝒰 := {||(u-c₁)ᵀ inv(Q₁) (u-c₁)||₂ ≤ 1}", "𝒟 := {||(d-c₂)ᵀ inv(Q₂) (d-c₂)||₂ ≤ 1}") : ("𝒰 := {||inv(Q₁) (u-c₁)||∞ ≤ 1}", "𝒟 := {||inv(Q₂) (d-c₂)||∞ ≤ 1}")
+        pr_error, pr_error_bds, pr_error_dim = error && length(system) == 9 ? ("+ $pr_E ε", ", ℰ := {||ε||∞ ≤ 1}", ", ε ∈ ℝ^{$pr_x_dim}") : ("", "", "")
+        
+        println("\nGiven,")
+        println("\n  ẋ = $pr_A x + $pr_B₁ u + $pr_B₂ d $pr_affine$pr_error")
+        println("\n  s.t. ")
+        println("\n  $pr_u_bds, $pr_d_bds$pr_error_bds")
+        println("\n  for x ∈ ℝ^{$pr_x_dim}, u ∈ ℝ^{$pr_u_dim}, d ∈ ℝ^{$pr_d_dim}$pr_error_dim")
+    end
+    
+    nx = typeof(system[1]) <: Function ? size(system[1](0.),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
+    system = length(system) == 7 ? (system..., zeros(nx)) : system
+    
+    J, Jˢ, Jp = target
+    M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
+    t = collect(th: th: T[end])    
+
+    ## System Data
+    XsT, ϕXsT = [], []
+    averagetimes, pointstocheck = [], []
+    opt_data = opt_tracking ? [] : nothing
+
+    ## Precomputation
+    if printing; println("\nPrecomputation, ..."); end
+    Hmats, Φ = preH(system, target, t; admm, opt_p, Φ, printing)
+
+    ## No Points? Sample
+    xigs, X = nothing, isnothing(X) ? Xg : X # legacy naming
+    if isnothing(X)
+        X = make_sample(space_p[1], nx, num_samples; method=sampling_method)
+    elseif isnothing(X) && make_grid
+        X, xigs, _ = make_grid(space_p..., nx; shift=ϵ, return_all=true)  #TODO GPU: not default! sample will be
+    end
+    num_pts = size(X, 2)
+
+    ## GPU Conversion
+    t = convert(MtlArray{Float32}, t)
+    X = simple_problem ? convert(MtlArray{Float32}, X) : X
+    system = [convert(MtlArray{Float32}, data) for data in system]
+    target = simple_problem ? [target[1], target[2], [convert(MtlArray{Float32}, data) for data in target[3]]] : target
+    Hmats = [convert(MtlArray{Float32}, data) for data in Hmats]
+    ϕX = Metal.zeros(num_pts)
+    V_init = isnothing(V_init) || !warm ? Metal.zeros(nx, num_pts, length(T)) : V_init 
+    # TODO: smarter sampled ws someday... eg rbf, w-avg
+
+    function target_kernel(Xd, ϕXd)
+        i = thread_position_in_grid_1d()
+        ϕXd[i] = J(Xd[:,i])
+        return
+    end
+
+    function optim_kernel(X_d, ϕX_d, tbH_d, V_init_d, Tix)
+        i = thread_position_in_grid_1d()
+        ϕX_d[bi], V_init_d[:, bi, Tix], _ = opt_method(system, target, Φ(Ti) * X_d[:, i]; tbH=tbH_d, v_init=V_init_d[:, bi, Tix], p2, game, opt_p)
+        return
+    end
+    # TODO !simple problem: needs to be redefined? maybe if it points to tbH, and that changes, is ok
+
+    ## Compute Near-Boundary set of Target in X
+    if simple_problem
+        
+        @suppress begin; tick(); end # timing        
+        @metal threads=num_pts target_kernel(X, ϕX)
+        # ϕX = J(X)
+        push!(averagetimes, tok() / num_pts) # initial grid eval time
+
+        ## TODO: GET THOSE GRADS TOO FOR V_INIT!! you should train w those too!
+        
+        # TODO GPU: could try to id boundary if grid
+        # if check_all
+        #     index = warm && warm_pattern == "spiral" ? mat_spiral(lg, lg)[1] : collect(1:length(ϕX))
+        # else
+        #     if moving_grid
+        #           # N = Int.([floor(inv(norm(X[i][:,1] - X[i][:,2]))) for i in eachindex(X)])
+        #           N = [10 for i in eachindex(X)]
+        #     end
+        #     index = boundary(ϕX; lg, N, nx)
+        # end
+
+        push!(XsT, Array(X)); push!(ϕXsT, Array(ϕX)) # for plotting ϕ0
+        push!(pointstocheck, num_pts)
+    end
+
+    prgame = game == "reach" ? "Reach" : "Avoid"
+    prerror = error ? " with Linear Error" : ""
+    if printing; println("\nSolving Backwards $prgame Set$prerror,"); end
+    @suppress begin; tick(); end # timing
+
+    ## Loop Over Time Frames ## TODO: time-loops inside threads? can check after initially testing (just a time thing)
+    for Tix in eachindex(T)
+
+        Ti = T[Tix]
+        tix = findfirst(abs.(t .-  Ti) .< th/2);
+        
+        # ## Update Near-Boundary set for moving problems (UNTESTED)
+        # if moving_grid || moving_target
+
+        #     Xi = !moving_grid ? X : X[Tix]
+        #     Ai, ci = !moving_target ? Jp : (Jp[1][Tix], Jp[2][Tix])
+
+        #     Ni = moving_grid ? N[Tix] : N
+        #     lgi = moving_grid ? lg[Tix] : lg
+
+        #     # TODO: UPDATE sample
+
+        #     Ji, Jˢi = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
+        #     target = moving_target ? (Ji, Jˢi, (convert(MtlArray{Float32}, Ai), convert(MtlArray{Float32}, ci))) : target
+
+        #     Hmats, Φ = admm ? preH(system, target, t; admm, opt_p, printing) : (Hmats, Φ)
+
+        #     ϕX = Ji(Xi) #TODO GPU: optional
+        #     if check_all #TODO GPU: default true
+        #         index = collect(1:length(ϕX))
+        #     else
+        #         index = boundary(ϕX; lg=lgi, N=Ni, nx)
+        #     end
+
+        #     push!(XsT, X[:, index]); push!(ϕXsT, ϕX[index]) # FIXME: adds 2x as many points to the solution (who can keep track? need soln struct)
+        # end
+
+        ## Map X to Z
+        # Z = Φ(Ti) * X #TODO GPU: move to inside thread
+
+        ## Packaging Hdata, tbH 
+        tbH = (intH, (Hmats, tix, th))
+
+        ## Pre solve details
+        # index_pts = eachindex(index)
+        # opt_data_Ti = opt_tracking ? [] : nothing
+
+        if printing
+            if !isempty(index)
+                time_str = "   for t=-$(T[Tix]),"
+                gap_str = *([" " for _=1:17 - length(time_str)]...)
+                pt_str = "($(length(index)) pts)..."
+                println(time_str * gap_str * pt_str)
+            else
+                println("At t=-$(T[Tix]), no x in the grid s.t. |J(x)| < " * string(ϵ))
+            end
+        end
+
+        @suppress begin; tick(); end # timing
+
+        ## Solve Inputted Points
+        @metal threads=num_pts optim_kernel(X, ϕX, tbH, V_init, max(1, Tix-1))
+        ## TODO: in this way, blocks are forced to sync time comps... might want to put time-stepping into thread comp
+
+        # for bi in index
+        #     ## Solve Hopf #TODO GPU: wrapped in kernel fn? dynamically defined based on opt/data?
+        #     ϕX[bi], V_init[:,bi], v_path = opt_method(system, target, Φ(Ti) * X[:, bi]; p2, game, tbH, opt_p, V_init[:,bi])
+            
+        #     # ## Store Optimization Path & Value
+        #     # if opt_tracking 
+        #     #     vals = zeros(size(v_path, 2))
+        #     #     for (vi, v) in enumerate(eachcol(v_path))
+        #     #         vals[vi] = Hopf(system, target, tbH, Z[:, bi], v_path[:,vi]; p2, game)
+        #     #     end
+        #     #     push!(opt_data_Ti, (v_path, vals)); 
+        #     # end
+        # end
+
+        ## Store Data #TODO GPU: moved to and fro GPU
+
+        push!(averagetimes, tok()/length(num_pts));
+        push!(pointstocheck, length(num_pts));
+        push!(XsT, Array(X))
+        push!(ϕXsT, Array(ϕX))
+        # if opt_tracking; push!(opt_data, opt_data_Ti); end
+
+        ## Update Near-Boundary index to intermediate solution #TODO GPU: convert to sampling near boundary
+        # if !check_all && simple_problem && Tix != length(T)
+        #     index = boundary(ϕX; lg, N, nx)
+        # end
+    end
+    
+    totaltime = tok()
+
+    pr_totaltime = round(totaltime, sigdigits=sigdigits)
+    pr_pointstocheck = Int.(pointstocheck)
+    pr_averagetimes = round.(float.(averagetimes), sigdigits=sigdigits)
+    min_ϕXsT = !isempty(ϕXsT) ? round.(minimum.(ϕXsT), sigdigits=sigdigits) : NaN
+    max_ϕXsT = !isempty(ϕXsT) ? round.(maximum.(ϕXsT), sigdigits=sigdigits) : NaN
+
+    # if plotting; plot((XsT, ϕXsT); xigs); end
+    if printing; println("TOTAL TIME: $pr_totaltime s"); end
+    if printing; println("\nAt t = $(vcat(0., T)) over X,"); end
+    if printing; println("  TOTAL PTS: $pr_pointstocheck"); end
+    if printing; println("  MEAN TIME: $pr_averagetimes s/pt"); end
+    if printing; println("  MIN VALUE: $min_ϕXsT"); end
+    if printing; println("  MAX VALUE: $max_ϕXsT \n"); end
+    run_stats = (totaltime, pointstocheck, averagetimes)
+
+    ## Return array of matrices of solved points (near-boundary or all pts) over time and corresponding values, where the first is target (1 + length(T) arrays)
+    # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
+    return (XsT, ϕXsT), run_stats, opt_data, Array(V_init)
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
@@ -727,11 +956,26 @@ function make_grid(bd, res, nx; return_all=false, shift=0.)
     return output
 end
 
+## Make Sample
+function make_sample(bd, nx, ns; method="uniform", return_all=false)
+    lbs, ubs = typeof(bd) <: Tuple || typeof(bd) <: Array ? (typeof(bd[1]) <: Tuple || typeof(bd[1]) <: Array ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
+    if method == "uniform"
+        X = (ubs - lbs) * rand(nx, ns) .+ lbs
+    elseif method == "normal"
+        X = 0.5 * (ubs - lbs) * randn(nx, ns) .+ 0.5 * (ubs - lbs)
+    end
+    output = return_all ? (X, nothing, (lbs, ubs)) : X
+    return output
+end
+
 ## Make Target
 function make_levelset_fs(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
-    if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2"]
+    Qd, rd, cd = convert(MtlArray{Float32}, Q), convert(MtlArray{Float32}, r), convert(MtlArray{Float32}, c)
+    if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2", "circle", "Circle"]
         J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
         Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
+        J(x::MtlVector) = ((x - cd)' * inv(Qd) * (x - cd))/2 - 0.5 * rd^2
+        Jˢ(v::MtlVector) = (v' * Qd * v)/2 + cd'v + 0.5 * rd^2
         J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
         Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
     else
@@ -742,9 +986,9 @@ end
 
 ## Make Parameters for a Set (for the inputs or target)
 function make_set_params(c, r; Q0=diagm(ones(length(c))), type="box")
-    if type ∈ ["box", "Box", "linf", "Linf"]
+    if type ∈ ["box", "Box", "linf", "Linf", "square", "Square"]
         Q = r * Q0
-    elseif type ∈ ["ball", "Ball", "l2", "L2"]
+    elseif type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2", "circle", "Circle"]
         Q = r^2 * Q0 # works
     else
         error("$type not supported yet; you could over/under approx. with 'ball' or 'box'") # TODO: l1, linf 
