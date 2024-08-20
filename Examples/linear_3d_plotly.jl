@@ -1,6 +1,6 @@
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, make_grid, make_levelset_fs, make_set_params
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, make_grid, make_target, make_set_params
 using LinearAlgebra, Plots, PlotlyJS
 plotlyjs() # plot_nice uses plotly, not necessary but nice for 3D https://plotly.com/julia/getting-started/
 
@@ -13,8 +13,7 @@ system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
 Q, center, radius = diagm(vcat([1.25^2], ones(size(A)[1]-1))), zero(A[:,1]), 1.
-J, Jˢ = make_levelset_fs(center, radius; Q, type="ellipse")
-target = (J, Jˢ, (Q, center, radius));
+target = make_target(center, radius; Q, type="ellipse")
 
 ## Times to Solve
 Th, Tf = 0.2, 0.8

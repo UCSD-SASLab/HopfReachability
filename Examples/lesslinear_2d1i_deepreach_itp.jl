@@ -1,6 +1,6 @@
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_cd, make_grid, make_levelset_fs, make_set_params
+using .HopfReachability: Hopf_BRS, Hopf_cd, make_grid, make_target, make_set_params
 using LinearAlgebra, Plots
 
 using PyCall
@@ -19,8 +19,7 @@ system, game = (A, reshape(B₁, 2, 1), reshape(B₂, 2, 1), Q₁, c₁, Q₂, c
 # Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.25
 # Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.15
 Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
-J, Jˢ = make_levelset_fs(center, radius; Q, type="ellipse")
-target = (J, Jˢ, (Q, center, radius));
+target = make_target(center, radius; Q, type="ellipse")
 
 ## Times to Solve
 Th, Tf = 0.25, 1.0

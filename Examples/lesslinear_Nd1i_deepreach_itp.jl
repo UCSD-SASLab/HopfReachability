@@ -1,6 +1,6 @@
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_cd, make_grid, make_levelset_fs, make_set_params, plot_nice
+using .HopfReachability: Hopf_BRS, Hopf_cd, make_grid, make_target, make_set_params, plot_nice
 using LinearAlgebra, Plots
 # using PlotlyJS
 
@@ -31,9 +31,8 @@ system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 # Q, center, radius = diagm(ones(N)), zeros(N), 0.15
 Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
 radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
-J, Jˢ = make_levelset_fs(center, radius_N; Q=Q_N, type="ellipse")
-# J, Jˢ = make_levelset_fs(center, radius; Q, type="ellipse")
-target = (J, Jˢ, (Q, center, radius));
+target = make_target(center, radius_N; Q=Q_N, type="ellipse")
+# target = make_target(center, radius; Q, type="ellipse")
 
 ## Times to Solve
 Th, Tf = 0.25, 1.0
@@ -145,12 +144,12 @@ total_jacc, total_mse = compute_jaccard_overtime(solution, solution_DP, Xg), com
 # Q, center, radius = diagm(ones(N)), zeros(N), 0.25
 
 # radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), ones(N-1)))
-# J_N, Jˢ = make_levelset_fs(center, radius_N; Q=Q_N, type="ellipse")
+# target_N = make_target(center, radius_N; Q=Q_N, type="ellipse")
 
 # # Xg_slice = Xg_xixj # xi - xj
 # Xg_slice = vcat(Xg_2d, zeros(N-2, size(Xg_2d, 2))) # xn - xi
 
-# target_N_os = (convert(Vector{Any}, [Xg_2d]), convert(Vector{Any}, [J_N(Xg_slice)]))
+# target_N_os = (convert(Vector{Any}, [Xg_2d]), convert(Vector{Any}, [target_N[1](Xg_slice)]))
 # plot_target_N_os = plot(target_N_os; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in 0.]...), xigs=xigs_2d, value=false, title="Target - 4D Hopf, xi-xn plane", legend=false)
 
 # target_N_comb = (convert(Vector{Any}, [Xg_2d]), convert(Vector{Any}, [V_N_itp(V_i_itps_DP, Pis_xi, 0., Xg_slice)]))

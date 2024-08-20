@@ -30,7 +30,7 @@ function Hopf_BRS(system, target, T;
                   opt_method=Hopf_cd, opt_p=nothing, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false, Φ=nothing,
                   X=nothing, Xg=nothing, lg=0, N=10, ϵ=0.5e-7, grid_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, sampling=false, samples=360, zplot=false, check_all=true,
-                  moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, admm=false)
+                  moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, p_init=nothing, P_in=nothing, admm=false)
 
     if opt_method == Hopf_cd
         # opt_p = isnothing(opt_p) ? (0.01, 2, ϵ, 100, 5, 10, 400) : opt_p # Faster
@@ -73,14 +73,15 @@ function Hopf_BRS(system, target, T;
     nx = typeof(system[1]) <: Function ? size(system[1](0.),1) : (length(size(system[1])) == 1 ? size(system[1][1],1) : size(system[1],1))
     system = length(system) == 7 ? (system..., zeros(nx)) : system
     
-    J, Jˢ, Jp = target
+    J, Jˢ, Jp, ∇J = target
     M, Q𝒯, c𝒯 = system[1], Jp[1], Jp[2]
-    t = collect(th: th: T[end])
+    t = collect(th: th: T[end]); 
+    @assert (Int.(round.(T / th)) ≈ T / th) "The time parameter `th` must evenly divide all times-to-solve for efficient precomputation (currently th=$(th)). Set the value, e.g. `Hopf_BRS(...; th=0.01)`."
     xigs = nothing
     X = isnothing(X) ? Xg : X # legacy naming
 
     ## System Data
-    index, ϕX, XsT, ϕXsT = [], [], [], []
+    index, ϕX, XsT, ϕXsT, ∇ϕXsT = [], [], [], [], []
     averagetimes, pointstocheck, last_bi = [], [], 1
     opt_data = opt_tracking ? [] : nothing
 
@@ -96,12 +97,27 @@ function Hopf_BRS(system, target, T;
         N = [10 for i in eachindex(X)] # TODO: arbitrary atm, fix
     end
 
+    ## Warm-Starting & Gradient Data (Hopf: min arg == spatial grad)
+    # warm_old, warm_new = zero(X), zero(X) # OLD warm matrices
+    P_init, P_out = nothing, zeros(nx, size(X,2), length(T)+1)
+    warm_on_the_fly = isnothing(P_in)
+    if warm
+        if warm_on_the_fly
+            P_init = P_out
+        else
+            P_init = copy(P_out)
+            P_init[:, :, 2:end] = P_in
+        end
+    end
+
     ## Compute Near-Boundary set of Target in X
     if simple_problem
         
         @suppress begin; tick(); end # timing
         ϕX = J(X)
         push!(averagetimes, tok() / length(ϕX)) # initial grid eval time
+
+        P_out[:, :, 1] = ∇J(X)
 
         if check_all
             index = warm && warm_pattern == "spiral" ? mat_spiral(lg, lg)[1] : collect(1:length(ϕX))
@@ -110,9 +126,9 @@ function Hopf_BRS(system, target, T;
         end
 
         push!(XsT, X[:, index]); push!(ϕXsT, ϕX[index]) # for plotting ϕ0
+        push!(∇ϕXsT, P_out[:, index, 1]);
         push!(pointstocheck, length(ϕX[index]))
     end
-    warm_old, warm_new = zero(X), zero(X) # warm matrices
 
     prgame = game == "reach" ? "Reach" : "Avoid"
     prerror = error ? " with Linear Error" : ""
@@ -133,7 +149,7 @@ function Hopf_BRS(system, target, T;
             Ni = moving_grid ? N[Tix] : N
             lgi = moving_grid ? lg[Tix] : lg
 
-            J, Jˢ = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
+            J, Jˢ = moving_target ? make_target(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
             ϕX = J(Xi)
             if check_all
                 index = collect(1:length(ϕX))
@@ -170,33 +186,42 @@ function Hopf_BRS(system, target, T;
         @suppress begin; tick(); end # timing
 
         ## Solve Inputted Points
+        last_bi = first(index_pts)
         for bi in index_pts
 
             ## Warm Starting 
-            if warm
-                if Tix == 1 || warm_pattern == "previous" || warm_pattern == "spiral"
-                    v_init = bi == first(index_pts) ? v_init : warm_old[:, last_bi]
+            if warm && warm_on_the_fly
+                if warm_pattern == "previous" || warm_pattern == "spiral"
+                # if Tix == 1 || warm_pattern == "previous" || warm_pattern == "spiral"
+                    # p_init = bi == first(index_pts) ? p_init : warm_old[:, last_bi]
+                    p_init = P_init[:, last_bi, Tix]
                 elseif warm_pattern == "temporal"
-                    v_init = warm_old[:, bi]
+                    # p_init = warm_old[:, bi]
+                    p_init = P_init[:, bi, Tix]
                 elseif warm_pattern == "spatiotemporal"
-                    v_init = bi == first(index_pts) ? warm_old[:, bi] : warm_old[:, last_bi]
+                    # p_init = bi == first(index_pts) ? warm_old[:, bi] : warm_old[:, last_bi]
+                    p_init = bi == first(index_pts) ? P_init[:, bi, Tix] : P_init[:, last_bi, Tix]
                 end
                 last_bi = copy(bi)
+
+            elseif warm && !warm_on_the_fly
+                p_init = P_init[:, bi, Tix+1]
             end
 
             ## Solve Hopf
-            ϕX[bi], dϕdz, v_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, v_init)
+            ϕX[bi], dϕdz, p_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, p_init)
+            P_out[:, bi, Tix+1] = copy(dϕdz)
             
-            warm_new[:, bi] = copy(dϕdz)
-            if bi == last(index_pts); warm_old = copy(warm_new); end # overwrite warm matrix
+            # warm_new[:, bi] = copy(dϕdz)
+            # if bi == last(index_pts); warm_old = copy(warm_new); end # overwrite warm matrix
 
             ## Store Optimization Path & Value
             if opt_tracking
-                vals = zeros(size(v_path, 2))
-                for (vi, v) in enumerate(eachcol(v_path))
-                    vals[vi] = Hopf(system, target, tbH, Z[:, bi], v_path[:,vi]; p2, game)
+                vals = zeros(size(p_path, 2))
+                for (pix, p) in enumerate(eachcol(p_path))
+                    vals[pix] = Hopf(system, target, tbH, Z[:, bi], p_path[:,pix]; p2, game)
                 end
-                push!(opt_data_Ti, (v_path, vals)); 
+                push!(opt_data_Ti, (p_path, vals)); 
             end
         end
 
@@ -206,6 +231,7 @@ function Hopf_BRS(system, target, T;
         push!(pointstocheck, length(index_pts));
         push!(XsT, X[:, index])
         push!(ϕXsT, ϕX[index])
+        push!(∇ϕXsT, P_out[:, index, Tix+1]);
         if opt_tracking; push!(opt_data, opt_data_Ti); end
 
         ## Update Near-Boundary index to intermediate solution
@@ -233,13 +259,13 @@ function Hopf_BRS(system, target, T;
 
     ## Return array of matrices of solved points (near-boundary or all pts) over time and corresponding values, where the first is target (1 + length(T) arrays)
     # if moving problem, target inserted at each Ti (2 * length(T) arrays) #TODO could be better
-    return (XsT, ϕXsT), run_stats, opt_data
+    return (XsT, ϕXsT), run_stats, opt_data, ∇ϕXsT
 end
 
 ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0 and the corresponding optimal strategies
 function Hopf_minT(system, target, x; 
                   opt_method=Hopf_cd, input_shapes=nothing, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball, error=false,
-                  T_init=nothing, v_init_=nothing, Φ=nothing,
+                  T_init=nothing, p_init_=nothing, Φ=nothing,
                   time_p=(0.01, 0.1, 2.), opt_p=nothing, tol=1e-5,
                   refine=0.5, refines=2, depth_counter=0,
                   p2=true, game="reach", printing=false, moving_target=false, warm=false)
@@ -292,7 +318,7 @@ function Hopf_minT(system, target, x;
 
     ## System ϕs
     ϕ, dϕdz = Inf, 0
-    v_init = isnothing(v_init_) ? nothing : copy(v_init_)
+    p_init = isnothing(p_init_) ? nothing : copy(p_init_)
 
     ## Precompute entire Φ for speed
     # Φ = isnothing(Φ) ? (!(typeof(M) <: Function) ? s->exp(s*M) : solveΦ(M, collect(th:th:maxT))[2]; printing) : Φ
@@ -319,8 +345,8 @@ function Hopf_minT(system, target, x;
 
         ## Hopf-Solving to check current Tˢ
         z = Φ(Tˢ) * x;
-        ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, game, tbH, opt_p, v_init)
-        v_init = warm ? copy(dϕdz) : nothing
+        ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, game, tbH, opt_p, p_init)
+        p_init = warm ? copy(dϕdz) : nothing
 
         ## Check if Tˢ yields valid ϕ
         if ϕ <= 0;
@@ -332,7 +358,7 @@ function Hopf_minT(system, target, x;
                                     time_p=(th*refine, Th*refine, Tˢ), # refine t params maxT
                                     T_init = Thi == 0 ? T_init : (Tˢ-Th), # initialize 1 Th step back unless first step
                                     refines=refines-1, depth_counter=depth_counter+1,
-                                    v_init_ = warm ? copy(dϕdz) : nothing, Φ,
+                                    p_init_ = warm ? copy(dϕdz) : nothing, Φ,
                                     refine, printing, opt_method, opt_p, preH, intH, HJoc, tol, p2, game, moving_target, warm);
 
                 # t = t_refined # need to do this in case refinement time goes past ϕ<0 time (i.e. refinements showed ϕ>0 actually)
@@ -385,7 +411,7 @@ end
 # ## Solve Hopf Problem to find minimum T* so ϕ(z,T*) = 0, Bisection Method (Will Only Work for BRTs)
 # function Hopf_minT_BM(system, target, x; 
 #     opt_method=Hopf_cd, preH=preH_ball, intH=intH_ball, HJoc=HJoc_ball,
-#         T_init=nothing, v_init_=nothing,
+#         T_init=nothing, p_init_=nothing,
 #         time_p=(0.02, 0.1, 1.), opt_p=nothing, 
 #         nx=size(system[1])[2], p2=true, game="reach", printing=false, moving_target=false, warm=false)
 
@@ -409,7 +435,7 @@ end
 
 #     ## System ϕs
 #     ϕ, dϕdz = Inf, 0
-#     v_init = isnothing(v_init_) ? nothing : copy(v_init_) 
+#     p_init = isnothing(p_init_) ? nothing : copy(p_init_) 
 
 #     ## Precomputing some of H for efficiency
 #     Hmats = preH(system, target, t; opt_p, admm, printing)
@@ -433,8 +459,8 @@ end
 
 #         ## Hopf-Solving to check current Tˢ
 #         z = Φ(Tˢ * system[1]) * x
-#         ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, game, tbH, opt_p, v_init)
-#         v_init = warm ? copy(dϕdz) : nothing
+#         ϕ, dϕdz, v_arr = opt_method(system, target, z; p2, game, tbH, opt_p, p_init)
+#         p_init = warm ? copy(dϕdz) : nothing
 
 #         ## Check if Tˢ yields valid ϕ
 #         if c == 0; 
@@ -478,7 +504,7 @@ end
 
 
 ## Iterative Coordinate Descent of the Hopf Cost at Point z
-function Hopf_cd(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=length(z))
+function Hopf_cd(system, target, z; p2, game, tbH, opt_p, p_init=nothing, nx=length(z))
 
     vh, L, tol, lim, lll, max_runs, max_its = opt_p
     solution, v = Inf, nothing
@@ -487,7 +513,7 @@ function Hopf_cd(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=len
     converged_runs, runs = 0, 0
     while converged_runs < lll
 
-        v = isnothing(v_init) ? 10*(rand(nx) .- 0.5) : copy(v_init) # Hopf optimizer variable
+        v = isnothing(p_init) ? 10*(rand(nx) .- 0.5) : copy(p_init) # Hopf optimizer variable
         v_arr_temp = zeros(nx, max_its)
 
         kcoord = copy(nx); # coordinate counter
@@ -552,7 +578,7 @@ function Hopf_cd(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=len
 end
 
 ## Proximal Splitting Algorithm for optimizing the Hopf Cost at point z (vectorized)
-function Hopf_admm(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=length(z))
+function Hopf_admm(system, target, z; p2, game, tbH, opt_p, p_init=nothing, nx=length(z))
 
     ## System
     Q, Q2 = system[4], system[6]
@@ -566,7 +592,7 @@ function Hopf_admm(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=l
     Σ, Σ2 = diagm(Σ), diagm(Σ2)
 
     ## Costate, Artificial Constraint Curves, Augmented Lagrange Multipliers
-    v = isnothing(v_init) ? 0.1*ones(nx) : v_init
+    v = isnothing(p_init) ? 0.1*ones(nx) : p_init
     γ, γ2, λ, λ2  = 0.1*ones(nu, tix), 0.1*ones(nd, tix), 0.1*ones(nu, tix), 0.1*ones(nd, tix) 
     v_arr = zeros(nx, max_its+1)
     # v_arr, γ_arr, γ2_arr, λ_arr, λ2_arr = zeros(nx, max_its), [], [], [], []
@@ -680,22 +706,22 @@ end
 # end
 
 ## ADMM-CD Hybrid Method
-function Hopf_admm_cd(system, target, z; p2, game, tbH, opt_p, v_init=nothing, nx=length(z))
+function Hopf_admm_cd(system, target, z; p2, game, tbH, opt_p, p_init=nothing, nx=length(z))
 
     opt_p_admm, opt_p_cd, ρ_grid_pts, ρ2_grid_pts, runs = opt_p
     max_ϕz, argmax_dϕdz, argmax_dϕdz_arr, v_arr_admm, min_k = -Inf, nothing, nothing, nothing, nothing
 
     for r = 1:(runs-1)
-        v = isnothing(v_init) ? rand(nx) .- 0.5 : r == 1 ? v_init : v_init .+ 0.5 * norm(v_init) * (rand(nx) .- 0.5)
+        v = isnothing(p_init) ? rand(nx) .- 0.5 : r == 1 ? p_init : p_init .+ 0.5 * norm(p_init) * (rand(nx) .- 0.5)
 
         for i = 0:ρ_grid_pts-1, j = 0:ρ2_grid_pts-1
 
             opt_p_admm = (opt_p_admm[1]/(10^i), opt_p_admm[2]/(10^j), opt_p_admm[3:end]...)
-            ϕz_admm, dϕdz_admm, v_arr_admm = Hopf_admm(system, target, z; p2, game, tbH, opt_p=opt_p_admm, nx, v_init=v)
+            ϕz_admm, dϕdz_admm, v_arr_admm = Hopf_admm(system, target, z; p2, game, tbH, opt_p=opt_p_admm, nx, p_init=v)
 
             for k in [1, 2, size(v_arr_admm)[2]] # initialize at no admm, first admm step and admm converged/max-it step
 
-                ϕz_cd, dϕdz_cd, v_arr_cd = Hopf_cd(system, target, z; p2, game, tbH, opt_p=opt_p_cd, nx, v_init=v_arr_admm[:, k])
+                ϕz_cd, dϕdz_cd, v_arr_cd = Hopf_cd(system, target, z; p2, game, tbH, opt_p=opt_p_cd, nx, p_init=v_arr_admm[:, k])
 
                 max_ϕz = max(max_ϕz, ϕz_cd)
                 argmax_dϕdz = max_ϕz == ϕz_cd ? dϕdz_cd : argmax_dϕdz
@@ -728,16 +754,17 @@ function make_grid(bd, res, nx; return_all=false, shift=0.)
 end
 
 ## Make Target
-function make_levelset_fs(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
+function make_target(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
     if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2"]
         J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
         Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
         J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
         Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
+        ∇J(x::Matrix) = inv(Q)' * (x .- c)
     else
         error("$type not supported yet") # TODO: l1, linf 
     end
-    return J, Jˢ
+    return (J, Jˢ, (Q, c, r), ∇J)
 end
 
 ## Make Parameters for a Set (for the inputs or target)

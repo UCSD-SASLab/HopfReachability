@@ -2,7 +2,7 @@
 include(pwd() * "/src/HopfReachability.jl");
 include(pwd() * "/src/cons_lin_utils.jl");
 include(pwd() * "/src/DP_comparison_utils.jl");
-using .HopfReachability: Hopf_BRS, Hopf_cd, make_levelset_fs
+using .HopfReachability: Hopf_BRS, Hopf_cd, make_target
 using ReachabilityAnalysis, Plots, LaTeXStrings, ImageFiltering
 
 ## VanderPol Example
@@ -81,7 +81,7 @@ system_errD = (s -> A(X̃(-s)), max_u * B1, max_d * B2, Q₁, c₁, Q₁, c₂, 
 lb, ub, res2 = 1.1 .* (-ρ(-[1,0,0,0], BRZ), -ρ(-[0,1,0,0], BRZ)), (ρ([1,0,0,0], BRZ), ρ([0,1,0,0], BRZ)), 50
 Xg, _, _, xig2 = hjr_init(c𝒯, Q𝒯, 1; shape="ball", lb=lb, ub=ub, res=res2);
 
-target = (make_levelset_fs(cₓ, r; Q=Qₓ), (Qₓ, cₓ));
+target = make_target(cₓ, r; Q=Qₓ);
 
 vh, stepsz, tol, stepszstep_its, conv_runs_rqd, max_runs, max_its = 0.01, 5, 1e-3, 100, 20, 20, 400
 opt_p_cd = (vh, stepsz, tol, stepszstep_its, conv_runs_rqd, max_runs, max_its)
@@ -307,9 +307,9 @@ EδD_TP(i, s) = δ̃ˢD_TPa[i][2](-s) * diagm([0, 1])
 system_errD_LE(i) = (s -> A(X̃_LE[i](-s)), max_u * B1, max_d * B2, Q₁, c₁, Q₁, c₂, s -> c(X̃_LE[i](-s)), s -> EδD_LE(i,s));
 system_errD_TP(i) = (s -> A(X̃_TPa[i](-s)), max_u * B1, max_d * B2, Q₁, c₁, Q₁, c₂, s -> c(X̃_TPa[i](-s)), s -> EδD_TP(i,s));
 
-targetri(i) = (make_levelset_fs(c𝒯rri(i), rr; Q=I(nx))..., (I(nx), c𝒯rri(i)));
-targetai(i) = (make_levelset_fs(c𝒯rri(i), ra; Q=I(nx))..., (I(nx), c𝒯rri(i)));
-targetai_ntpp1 = (make_levelset_fs(c𝒯, ra; Q=I(nx))..., (diagm(ones(nx)), c𝒯));
+targetri(i) = make_target(c𝒯rri(i), rr; Q=I(nx));
+targetai(i) = make_target(c𝒯rri(i), ra; Q=I(nx));
+targetai_ntpp1 = make_target(c𝒯, ra; Q=I(nx));
 
 lb = (1.1 * -ρ(-[1,0,0,0], BRZu), -ρ(-[0,1,0,0], BRZu))
 ub = (1.65 * ρ([1,0,0,0], BRZu), 1.25 * ρ([0,1,0,0], BRZu))

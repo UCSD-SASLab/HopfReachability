@@ -63,7 +63,7 @@ Here we solve the Backwards Reachable Sets for a simple, time-varying system wit
 
 ```julia
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, plot_nice, make_grid, make_levelset_fs, make_set_params
+using .HopfReachability: Hopf_BRS, plot_nice, make_grid, make_target, make_set_params
 using LinearAlgebra, Plots, OrdinaryDiffEq
 
 ## Times to Solve
@@ -83,8 +83,7 @@ system_f = (Af, B₁, B₂, Q₁, c₁, Q₂, c₂)
 
 ## Target
 center, radius = [-1.; 1.], 0.5
-J, Jˢ = make_levelset_fs(center, radius; type="ball")
-target = (J, Jˢ, (diagm([1; 1]), center));
+target = make_target(center, radius; type="ball")
 
 ## Points to Solve
 bd, res, ϵ = 3, 0.1, .5e-7

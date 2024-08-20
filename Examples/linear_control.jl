@@ -1,6 +1,6 @@
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf, Hopf_minT, make_set_params, make_levelset_fs, make_grid
+using .HopfReachability: Hopf_BRS, Hopf_admm, Hopf_cd, plot_nice, Hopf, Hopf_minT, make_set_params, make_target, make_grid
 using LinearAlgebra, Plots
 
 ## System & Game
@@ -16,8 +16,7 @@ T = collect(Th : Th : Tf);
 
 ## Elliptical Target: J(x) = 0 is the boundary of the target
 center, radius = zero(A[:,1]), 1.
-J, Jˢ = make_levelset_fs(center, radius; type="ball")
-target = (J, Jˢ, (diagm(ones(2)), center, radius));
+target = make_target(center, radius; type="ball")
 
 ## Points to Solve
 bd, res, ϵ = 4, 0.1, .5e-7

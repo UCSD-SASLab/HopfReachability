@@ -1,7 +1,7 @@
 
 include(pwd() * "/src/HopfReachability.jl");
 include(pwd() * "/src/control_utils.jl");
-using .HopfReachability: Hopf_BRS, plot_nice, Hopf_minT, Hopf_cd, make_set_params, make_grid, make_levelset_fs
+using .HopfReachability: Hopf_BRS, plot_nice, Hopf_minT, Hopf_cd, make_set_params, make_grid, make_target
 using LinearAlgebra, Plots
 
 ## System
@@ -14,8 +14,7 @@ system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
 Q, center, radius = diagm(ones(nx)), zeros(nx), 1.
-J, Jˢ = make_levelset_fs(center, radius; Q, type="ellipse")
-target = (J, Jˢ, (Q, center, radius));
+target = make_target(center, radius; Q, type="ellipse")
 
 ## Lookback Time(s), 
 th, Th, Tf = 0.05, 0.4, 2.0

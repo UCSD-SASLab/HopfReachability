@@ -2,7 +2,7 @@
 include(pwd() * "/src/HopfReachability.jl");
 include(pwd() * "/src/cons_lin_utils.jl");
 include(pwd() * "/src/DP_comparison_utils.jl"); 
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, make_levelset_fs
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_cd, make_target
 using LaTeXStrings, ImageFiltering, JLD2, Plots
 
 ## Load Python & Pkgs
@@ -59,7 +59,7 @@ Q𝒯, Q₁, Q₂ = inv(r) * diagm(d𝒯), inv(max_u) * diagm([1.]), inv(max_d) 
 nx = length(c𝒯);
 xlimz, ylimz = (-3.5, 3.5), (-3.5, 3.5)
 inputs = ((Q₁, c₁), (Q₂, c₁))
-𝒯target = (make_levelset_fs(c𝒯, 1.; Q=Q𝒯), (Q𝒯, c𝒯))
+𝒯target = make_target(c𝒯, 1.; Q=Q𝒯)
 
 μ = 1.0
 function vanderpol!(dx, x, p, t)
@@ -202,7 +202,7 @@ for key in ["pol", "rbf"]
         c𝒯_aug = Ψj(c𝒯)
         Q𝒯_aug = inv(r_aug) * diagm(vcat(d𝒯, η*ones(models[key][j]["nk"] - nx)))
 
-        lifted_target = (make_levelset_fs(c𝒯_aug, 1.; Q=Q𝒯_aug)..., (Q𝒯_aug, c𝒯_aug));
+        lifted_target = make_target(c𝒯_aug, 1.; Q=Q𝒯_aug);
         gr(); contour!(target_check_plots[key], xig2..., reshape(lifted_target[1](Gg_man), res2, res2)', levels=[0], color=palette(:default)[j+1], lw=2.5, colorbar=false, xlims=xlimz, ylims=ylimz)
         
         ## Solve

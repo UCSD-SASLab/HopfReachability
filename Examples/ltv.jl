@@ -1,6 +1,6 @@
 
 include(pwd() * "/src/HopfReachability.jl");
-using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, make_grid, make_levelset_fs, make_set_params
+using .HopfReachability: Hopf_BRS, Hopf_admm_cd, Hopf_admm, Hopf_cd, plot_nice, make_grid, make_target, make_set_params
 using LinearAlgebra, Plots, OrdinaryDiffEq
 
 ## Times to Solve
@@ -27,8 +27,7 @@ system_f = (Af, s -> B₁f(s), s -> B₂f(s), Q₁, c₁, Q₂, c₂)
 
 ## Target
 center, radius = [-1.; 1.], 0.5
-J, Jˢ = make_levelset_fs(center, radius; type="ball")
-target = (J, Jˢ, (diagm([1; 1]), center));
+target = make_target(center, radius; type="ball")
 
 ## Points to Solve
 bd, res, ϵ = 3, 0.1, .5e-7
