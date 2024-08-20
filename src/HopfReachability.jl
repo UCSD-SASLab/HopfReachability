@@ -7,6 +7,8 @@ using Plots, ScatteredInterpolation
 import Contour: contours, levels, level, lines, coordinates
 import Plots: plot, scatter, contour
 
+using Metal #TODO: Delete me!
+
 ##################################################################################################
 ##################################################################################################
 
@@ -172,11 +174,11 @@ function Hopf_BRS(system, target, T;
             ## Warm Starting 
             if warm
                 if Tix == 1 || warm_pattern == "previous" || warm_pattern == "spiral"
-                    v_init = bi == first(index_pts) ? v_init : warm_old[:, last_bi]
+                    v_init = bi == first(index) ? v_init : warm_old[:, last_bi]
                 elseif warm_pattern == "temporal"
                     v_init = warm_old[:, bi]
                 elseif warm_pattern == "spatiotemporal"
-                    v_init = bi == first(index_pts) ? warm_old[:, bi] : warm_old[:, last_bi]
+                    v_init = bi == first(index) ? warm_old[:, bi] : warm_old[:, last_bi]
                 end
                 last_bi = copy(bi)
             end
@@ -185,7 +187,7 @@ function Hopf_BRS(system, target, T;
             ϕX[bi], dϕdz, v_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, v_init)
             
             warm_new[:, bi] = copy(dϕdz)
-            if bi == last(index_pts); warm_old = copy(warm_new); end # overwrite warm matrix
+            if bi == last(index); warm_old = copy(warm_new); end # overwrite warm matrix
 
             ## Store Optimization Path & Value
             if opt_tracking
@@ -199,8 +201,8 @@ function Hopf_BRS(system, target, T;
 
         ## Store Data
 
-        push!(averagetimes, tok()/length(index_pts));
-        push!(pointstocheck, length(index_pts));
+        push!(averagetimes, tok()/length(index));
+        push!(pointstocheck, length(index));
         push!(XsT, X[:, index])
         push!(ϕXsT, ϕX[index])
         if opt_tracking; push!(opt_data, opt_data_Ti); end
@@ -239,6 +241,8 @@ function Hopf_BRS_metal(system, target, T;
                   X=nothing, Xg=nothing, lg=0, N=10, ϵ=0.5e-7, space_p=(3, 10 + 0.5e-7), th=0.02, warm=false, warm_pattern="previous",
                   p2=true, game="reach", plotting=false, printing=false, zplot=false, check_all=true, num_samples=20000, sampling_method="uniform",
                   moving_target=false, moving_grid=false, opt_tracking=false, sigdigits=3, v_init=nothing, V_init=nothing, admm=false, make_grid=false)
+
+    @assert isdefined(Main, Symbol("Metal")) "This GPU function requires Metal.jl (and an Apple M-series GPU); load it with `using Metal`."
 
     if opt_method == Hopf_cd
         # opt_p = isnothing(opt_p) ? (0.01, 2, ϵ, 100, 5, 10, 400) : opt_p # Faster
@@ -301,27 +305,36 @@ function Hopf_BRS_metal(system, target, T;
     elseif isnothing(X) && make_grid
         X, xigs, _ = make_grid(space_p..., nx; shift=ϵ, return_all=true)  #TODO GPU: not default! sample will be
     end
-    num_pts = size(X, 2)
+
+    Qt, ct, rt = target[3]
+    iQt = inv(Qt)
+    iQd, rd, cd = convert(Main.MtlArray{Float32}, iQt), convert(Float32, rt), convert(Main.MtlArray{Float32}, ct)
 
     ## GPU Conversion
-    t = convert(MtlArray{Float32}, t)
-    X = simple_problem ? convert(MtlArray{Float32}, X) : X
-    system = [convert(MtlArray{Float32}, data) for data in system]
-    target = simple_problem ? [target[1], target[2], [convert(MtlArray{Float32}, data) for data in target[3]]] : target
-    Hmats = [convert(MtlArray{Float32}, data) for data in Hmats]
-    ϕX = Metal.zeros(num_pts)
-    V_init = isnothing(V_init) || !warm ? Metal.zeros(nx, num_pts, length(T)) : V_init 
+    t = convert(Main.MtlArray{Float32}, t)
+    X = simple_problem ? convert(Main.MtlArray{Float32}, X) : X
+    system = [convert(Main.MtlArray{Float32}, data) for data in system]
+    target = simple_problem ? [target[1], target[2], [typeof(data) <: Array ? convert(Main.MtlArray{Float32}, data) : data for data in target[3]]] : target
+    Hmats = [convert(Main.MtlArray{Float32}, data) for data in Hmats]
+    ϕX = Main.Metal.zeros(num_samples)
+    V_init = isnothing(V_init) || !warm ? Main.Metal.zeros(nx, num_samples, length(T)) : V_init 
     # TODO: smarter sampled ws someday... eg rbf, w-avg
 
-    function target_kernel(Xd, ϕXd)
+    println("\nConversion Success!\n")
+
+    function target_kernel(Xd::MtlDeviceMatrix{Float32, 1}, ϕXd::MtlDeviceVector{Float32, 1})
         i = thread_position_in_grid_1d()
-        ϕXd[i] = J(Xd[:,i])
+        # ϕXd[i] = J(Xd[:,i])
+        # ϕXd[i] = ((Xd[:,i] - cd)' * iQd * (Xd[:,i] - cd))/2 - 0.5 * rd^2
+        x = @inbounds @view Xd[:,i]
+        xmc = (x - cd)
+        ϕXd[i] = ((xmc' * iQd * xmc) - rd^2)/2
         return
     end
 
     function optim_kernel(X_d, ϕX_d, tbH_d, V_init_d, Tix)
         i = thread_position_in_grid_1d()
-        ϕX_d[bi], V_init_d[:, bi, Tix], _ = opt_method(system, target, Φ(Ti) * X_d[:, i]; tbH=tbH_d, v_init=V_init_d[:, bi, Tix], p2, game, opt_p)
+        ϕX_d[bi], V_init_d[:, bi, Tix], _ = opt_method(system, target, Φ(Ti) * X_d[:, i]; tbH=tbH_d, v_init=V_init_d[:, bi, max(1, Tix-1)], p2, game, opt_p)
         return
     end
     # TODO !simple problem: needs to be redefined? maybe if it points to tbH, and that changes, is ok
@@ -330,9 +343,10 @@ function Hopf_BRS_metal(system, target, T;
     if simple_problem
         
         @suppress begin; tick(); end # timing        
-        @metal threads=num_pts target_kernel(X, ϕX)
+        # @eval Main.@metal threads=$(num_samples) $target_kernel($(X), $(ϕX))
+        @metal threads=num_samples target_kernel(X, ϕX)
         # ϕX = J(X)
-        push!(averagetimes, tok() / num_pts) # initial grid eval time
+        push!(averagetimes, tok() / num_samples) # initial grid eval time
 
         ## TODO: GET THOSE GRADS TOO FOR V_INIT!! you should train w those too!
         
@@ -348,7 +362,7 @@ function Hopf_BRS_metal(system, target, T;
         # end
 
         push!(XsT, Array(X)); push!(ϕXsT, Array(ϕX)) # for plotting ϕ0
-        push!(pointstocheck, num_pts)
+        push!(pointstocheck, num_samples)
     end
 
     prgame = game == "reach" ? "Reach" : "Avoid"
@@ -374,7 +388,7 @@ function Hopf_BRS_metal(system, target, T;
         #     # TODO: UPDATE sample
 
         #     Ji, Jˢi = moving_target ? make_levelset_fs(ci, r; Q=Ai) : J, Jˢ # FIXME: make target tv fn of t
-        #     target = moving_target ? (Ji, Jˢi, (convert(MtlArray{Float32}, Ai), convert(MtlArray{Float32}, ci))) : target
+        #     target = moving_target ? (Ji, Jˢi, (convert(Main.MtlArray{Float32}, Ai), convert(Main.MtlArray{Float32}, ci))) : target
 
         #     Hmats, Φ = admm ? preH(system, target, t; admm, opt_p, printing) : (Hmats, Φ)
 
@@ -412,7 +426,7 @@ function Hopf_BRS_metal(system, target, T;
         @suppress begin; tick(); end # timing
 
         ## Solve Inputted Points
-        @metal threads=num_pts optim_kernel(X, ϕX, tbH, V_init, max(1, Tix-1))
+        @eval Main.@metal threads=num_samples optim_kernel(X, ϕX, tbH, V_init, Tix)
         ## TODO: in this way, blocks are forced to sync time comps... might want to put time-stepping into thread comp
 
         # for bi in index
@@ -431,8 +445,8 @@ function Hopf_BRS_metal(system, target, T;
 
         ## Store Data #TODO GPU: moved to and fro GPU
 
-        push!(averagetimes, tok()/length(num_pts));
-        push!(pointstocheck, length(num_pts));
+        push!(averagetimes, tok()/length(num_samples));
+        push!(pointstocheck, length(num_samples));
         push!(XsT, Array(X))
         push!(ϕXsT, Array(ϕX))
         # if opt_tracking; push!(opt_data, opt_data_Ti); end
@@ -960,9 +974,9 @@ end
 function make_sample(bd, nx, ns; method="uniform", return_all=false)
     lbs, ubs = typeof(bd) <: Tuple || typeof(bd) <: Array ? (typeof(bd[1]) <: Tuple || typeof(bd[1]) <: Array ? bd : (bd[1]*ones(nx), bd[2]*ones(nx))) : (-bd*ones(nx), bd*ones(nx))
     if method == "uniform"
-        X = (ubs - lbs) * rand(nx, ns) .+ lbs
+        X = (ubs - lbs) .* rand(nx, ns) .+ lbs
     elseif method == "normal"
-        X = 0.5 * (ubs - lbs) * randn(nx, ns) .+ 0.5 * (ubs - lbs)
+        X = 0.5 * (ubs - lbs) .* randn(nx, ns) .+ 0.5 * (ubs - lbs)
     end
     output = return_all ? (X, nothing, (lbs, ubs)) : X
     return output
@@ -970,14 +984,18 @@ end
 
 ## Make Target
 function make_levelset_fs(c, r; Q=diagm(ones(length(c))), type="ball") # TODO: tv arg instead of redefining for tv params
-    Qd, rd, cd = convert(MtlArray{Float32}, Q), convert(MtlArray{Float32}, r), convert(MtlArray{Float32}, c)
     if type ∈ ["ball", "Ball", "ellipse", "Ellipse", "l2", "L2", "circle", "Circle"]
-        J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
-        Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
-        J(x::MtlVector) = ((x - cd)' * inv(Qd) * (x - cd))/2 - 0.5 * rd^2
-        Jˢ(v::MtlVector) = (v' * Qd * v)/2 + cd'v + 0.5 * rd^2
-        J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
-        Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
+        # J(x::Vector) = ((x - c)' * inv(Q) * (x - c))/2 - 0.5 * r^2
+        # Jˢ(v::Vector) = (v' * Q * v)/2 + c'v + 0.5 * r^2
+        if isdefined(Main, Symbol("Metal"))
+            Qd, rd, cd = convert(Main.MtlArray{Float32}, Q), r, convert(Main.MtlArray{Float32}, c)
+            # @eval J(x::Main.MtlVector) = ((x - cd)' * inv(Qd) * (x - cd))/2 - 0.5 * rd^2
+            # @eval Jˢ(v::Main.MtlVector) = (v' * Qd * v)/2 + cd'v + 0.5 * rd^2
+            J(x::MtlVector) = ((x - cd)' * inv(Qd) * (x - cd))/2 - 0.5 * rd^2
+            Jˢ(v::MtlVector) = (v' * Qd * v)/2 + cd'v + 0.5 * rd^2
+        end
+        # J(x::Matrix) = diag((x .- c)' * inv(Q) * (x .- c))/2 .- 0.5 * r^2
+        # Jˢ(v::Matrix) = diag(v' * Q * v)/2 + (c'v)' .+ 0.5 * r^2
     else
         error("$type not supported yet") # TODO: l1, linf 
     end
