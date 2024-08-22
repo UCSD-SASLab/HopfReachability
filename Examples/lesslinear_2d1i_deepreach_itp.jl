@@ -5,6 +5,11 @@ using LinearAlgebra, Plots
 
 using PyCall
 include(pwd() * "/src/DP_comparison_utils.jl");
+pushfirst!(pyimport("sys")."path", pwd() * "/Examples/DP_comparison_files/");
+np = pyimport("numpy")
+jnp = pyimport("jax.numpy")
+hj = pyimport("hj_reachability")
+hjr_lesslin = pyimport("l2d_ll2d_hj_reachability")
 
 using JLD2, Interpolations, ScatteredInterpolation
 
@@ -16,9 +21,9 @@ Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & �
 system, game = (A, reshape(B₁, 2, 1), reshape(B₂, 2, 1), Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
-# Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.25
+Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.25
 # Q, center, radius = diagm(ones(size(A)[1])), zero(A[:,1]), 0.15
-Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
+# Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
 target = make_target(center, radius; Q, type="ellipse")
 
 ## Times to Solve
@@ -89,13 +94,7 @@ surface(x, y, (x, y) -> V_itp_hopf(y, x, 1.))
 
 ### Compare With LessLinear Model with DP (hj_reachability)
 
-pushfirst!(pyimport("sys")."path", pwd() * "/Examples/DP_comparison_files/");
-np = pyimport("numpy")
-jnp = pyimport("jax.numpy")
-hj = pyimport("hj_reachability")
-hjr_lesslin = pyimport("l2d_ll2d_hj_reachability")
-
-c = 5
+c = 20
 p_sets = [
     [0, 0, 0], ## Linear
     [c, 0, 0], [-c, 0, 0], ## Less Linear Tier 1
@@ -106,7 +105,7 @@ p_sets = [
 LessLinear2D_interpolations = Dict("hopf" => V_itp_hopf)
 LessLinear2D_plots = Dict("hopf" => plot_hopf_leg)
 
-Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, inv.(Q), radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7, bc_grad_factor=1.)
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, inv.(Q), radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7, bc_grad_factor=0.5)
 solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
 
 for p_set in p_sets
@@ -134,6 +133,10 @@ for p_set in p_sets
 end
 # full_plot = plot(plot_hopf_leg, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
 full_plot = plot(plot_hopf_BRTs, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
+
+nametag = "res1e-2_r$(Int(radius*100))e-2_c$(c)"
+save("LessLinear2D1i_interpolations_$nametag.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
+savefig(full_plot, "LessLinear2d1i_plot_$nametag.png")
 
 # save("LessLinear2D1i_interpolations_res1e-2_r4e-1_el_1_5.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
 # savefig(full_plot, "LessLinear2d1i_plot_res1e-2_r4e-1_el_1_5.png")

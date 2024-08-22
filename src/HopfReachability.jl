@@ -106,7 +106,7 @@ function Hopf_BRS(system, target, T;
             P_init = P_out
         else
             P_init = copy(P_out)
-            P_init[:, :, 2:end] = P_in
+            P_init[:, :, 2:end] = copy(P_in)
         end
     end
 

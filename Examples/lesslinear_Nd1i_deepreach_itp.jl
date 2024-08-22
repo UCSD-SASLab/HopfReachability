@@ -11,13 +11,14 @@ include(pwd() * "/src/interp_utils.jl");
 using JLD2, Interpolations, ScatteredInterpolation, ImageFiltering
 
 using Interpolations, JLD
-# LessLinear2D_interpolations = load("LessLinear2D1i_interpolations_res1e-2.jld", "LessLinear2D_interpolations");
-LessLinear2D_interpolations = load("LessLinear2D1i_interpolations_res1e-2_r4e-1_el_1_5.jld", "LessLinear2D_interpolations");
+path_to_interps = "/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/DRHopf_interps/"
+LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r25e-2_c20.jld", "LessLinear2D_interpolations");
+# LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r4e-1_el_1_5.jld", "LessLinear2D_interpolations");
 V_DP_itp = LessLinear2D_interpolations["g0_m0_a0"]
 
 ##
 
-N = 3
+N = 15
 
 ## System & Game
 
@@ -28,32 +29,36 @@ Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & �
 system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
+Q, center, radius = diagm(ones(N)), zeros(N), 0.25
 # Q, center, radius = diagm(ones(N)), zeros(N), 0.15
-Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
-radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
+radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(1) * ones(N-1)))
+# Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
+# radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
 target = make_target(center, radius_N; Q=Q_N, type="ellipse")
 # target = make_target(center, radius; Q, type="ellipse")
 
 ## Times to Solve
-Th, Tf = 0.25, 1.0
+Th, Tf = 0.1, 1.0
+# Th, Tf = 0.025, 1.0
 times = collect(Th : Th : Tf);
 
 ## Point(s) to Solve (any set works!)
 bd, ppd, ϵ = 1.0001, 31, 0*.5e-7
 res = 2*bd/(ppd-1)
-Xg, xigs, (lb, ub) = make_grid(bd, res, N; return_all=true, shift=ϵ); # solve over grid
+# Xg, xigs, (lb, ub) = make_grid(bd, res, N; return_all=true, shift=ϵ); # solve over grid
 Xg_2d, xigs_2d, _ = make_grid(bd, res, 2; return_all=true, shift=ϵ); # solve over grid
 Xg_2d_hr, xigs_2d_hr, _ = make_grid(bd, 0.1 * res, 2; return_all=true, shift=ϵ); # solve over grid
-# Xg_rand = 2bd*rand(2, 500) .- bd .+ ϵ; # solve over random samples
+Xg_rand = 2bd*rand(N, 1000) .- bd .+ ϵ; # solve over random samples
 
 ## Hopf Coordinate-Descent Parameters (optional, note the default are conserative/slower)
-vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 2, 1e-3, 100, 1, 1, 1000
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
 ## Solve
-solution, run_stats = Hopf_BRS(system, target, times; Xg, th=0.05, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
+solution, run_stats = Hopf_BRS(system, target, times; Xg, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
 # solution_sparse, run_stats = Hopf_BRS(system, target, times; Xg, lg=length(xigs[1]), th=0.05, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=false, check_all=false, printing=true, N=10);
-# solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.05, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, check_all=true, printing=true);
+solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true);
 
 ## Plot on an xn-xi plane 
 
@@ -70,36 +75,45 @@ plot_hopf_slice_xnxij = plot(solution_2d; interpolate=true, labels=vcat("Target"
 
 ## Compared with Stored
 
-function compute_jaccard_overtime(solution_1, solution_2, Xg_shared; tix=2:length(solution_1))
+alltimes = vcat(0.,times)
+make_tXg(t, X) = vcat(t*ones(size(X,2))', X)
+
+# V_i_itps_DP = [V_DP_itp for i=1:N-1]
+# Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
+# V_N_DP(t, XgN) = sum(fast_interp(V_i_itps_DP[i], make_tXg(t, Pis_xi[i] * XgN)) for i=1:N-1)
+
+V_N_DP(t, X_N) = sum(fast_interp(V_DP_itp, make_tXg(t, view(X_N,[1, i+1],:))) for i=1:N-1)
+
+function jaccard_solutions_overtime(solution_1, solution_2, Xg_shared; tix=2:length(solution_1[1]))
     n_inter, n_union = 0, 0
     for ti in tix
         BRS_1, BRS_2 = Xg_shared[:, solution_1[2][ti] .< 0], Xg_shared[:, solution_2[2][ti] .< 0]
         BRS_set_1, BRS_set_2 = Set(), Set()
-        map(x->push!(BRS_set_1, x), eachcol(BRS_1))
-        map(x->push!(BRS_set_2, x), eachcol(BRS_2))
-        n_inter_ti = length(intersect(BRS_set_1, BRS_set_2))
-        n_union_ti = length(BRS_set_1) + length(BRS_set_2) - n_inter_ti
+        map(x->push!(BRS_set_1, x), eachcol(BRS_1)); map(x->push!(BRS_set_2, x), eachcol(BRS_2))
+        n_inter_ti, n_union_ti = length(intersect(BRS_set_1, BRS_set_2)), length(union(BRS_set_1, BRS_set_2))
         n_inter += n_inter_ti
         n_union += n_union_ti
     end
     return  n_inter / n_union
 end
 
-function compute_MSE_overtime(solution_1, solution_2; tix=2:length(solution_1))
-    MSE = 0
+function MSE_solutions_overtime(solution_1, solution_2; tix=1:length(solution_1[1])-1)
+    MSE = 0.
     for ti in tix
-        if solution_1[1][ti] != solution_2[1][ti]; Assert("Solution grids don't match!"); end
-        MSE += sum((solution_1[2][ti] - solution_2[2][ti]).^2) / (length(solution_1[2][ti]) * (length(solution_1[1]) - 1))
+        @assert solution_1[1][ti] == solution_2[1][ti] "Solution grids don't match!"
+        MSE += sum((solution_1[2][ti+1] - solution_2[2][ti+1]).^2) / (length(solution_1[2][ti+1]) * length(tix))
     end
     return MSE
 end
 
-alltimes = vcat(0.,times)
-make_tXg(_t, _Xg) = vcat(_t*ones(size(_Xg,2))', _Xg)
-
-V_i_itps_DP = [V_DP_itp for i=1:N-1]
-Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
-V_N_itp(V_i_itps, Pis, t, XgN) = sum(fast_interp(V_i_itps[i], make_tXg(t, Pis[i] * XgN)) for i=1:N-1)
+function MSE_solution(solution, times; subset=1:length(solution[2][1]), tix=1:length(times))
+    MSE, MSEs = 0, 0. * zero(tix)
+    for ti in tix
+        MSEs[ti] = sum((V_N_DP(times[ti], solution[1][ti+1][:, subset]) - solution[2][ti+1][subset]).^2) / length(solution[2][ti+1][subset]) # subset could be bit array or indexes
+        MSE += MSEs[ti] / length(times)
+    end
+    return MSE, MSEs
+end
 
 ## Compare on the three planes: xn-xi, xi-xj, xn-xij
 
@@ -118,161 +132,137 @@ for i=1:length(slice_ixs)
     plot_hopf_slice = plot(solution_slice; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs_2d, value=false, title="$(N)D Hopf, $(slice_labels[i]) plane", legend=false)
 
     Xg_slice = Xg[:, slice_ix]
-    solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_itps_DP, Pis_xi, alltimes[ti], Xg_slice) for ti=1:length(times)+1]);
-    solution_DP = (solution_grids_2d, solution_DP_values);
-    plot_DP = plot(solution_DP; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs_2d, value=false, title="True (DP), $(slice_labels[i]) plane", legend=false)
-    
-    jacc, mse = compute_jaccard_overtime(solution_2d, solution_DP, Xg_2d), compute_MSE_overtime(solution_2d, solution_DP)
+    solution_slice_DP_values = convert(Vector{Any}, [V_N_DP(alltimes[ti], Xg_slice) for ti=1:length(times)+1]);
+    solution_slice_DP = (solution_grids_2d, solution_slice_DP_values);
+    plot_DP = plot(solution_slice_DP; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs_2d, value=false, title="True (DP), $(slice_labels[i]) plane", legend=false, alpha=0.5, linestyle=:dash)
+
+    jacc, mse = jaccard_solutions_overtime(solution_slice, solution_slice_DP, Xg_2d), MSE_solutions_overtime(solution_slice, solution_slice_DP)
+    println("SLICE $i, $(slice_labels[i]): (Jacc: $jacc), (MSE: $mse)")
     annotate!(plot_hopf_slice, 0., -0.8, ("Jaccard = $(round(jacc, digits=2))", 8, :black, :left))
     annotate!(plot_hopf_slice, 0., -0.9,("     MSE = $(round(mse, digits=2))",  8, :black, :left))
     push!(slice_plots, plot(plot_DP, plot_hopf_slice, layout=(2,1)))
 end
 plot(slice_plots..., layout=(1,3), size=(750, 500), titlefontsize=8)
 
-## Total Jaccard
+## Target Check
 
-solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_itps_DP, Pis_xi, alltimes[ti], Xg) for ti=1:length(times)+1]);
+i = 1
+slice_ix = slice_ixs[i];
+solution_target_slice = (solution_grids_2d[1:3], convert(Vector{Any}, [solution[2][ti][slice_ix] for ti=[1,1,1]]));
+Xg_slice = Xg[:, slice_ix]
+solution_slice_DP_values = convert(Vector{Any}, [V_N_DP(0., Xg_slice) for ti=1:3]);
+solution_slice_DP = (solution_grids_2d[1:3], solution_slice_DP_values);
+
+solution_target = (convert(Vector{Any},[solution[1][1], solution[1][1]]), convert(Vector{Any}, [solution[2][1], solution[2][1]]));
+solution_target_DP_vals = convert(Vector{Any}, [V_N_DP([0., 0.][ti], Xg) for ti=1:2]);
+solution_target_DP = (solution_target[1], solution_target_DP_vals);
+MSE_target = MSE_solutions_overtime(solution_target, solution_target_DP);
+MSE_target, MSEs_target = MSE_solution(solution_target, [0.])
+jacc_target = jaccard_solutions_overtime(solution_target, solution_target_DP, Xg)
+
+println("Targt, all-space: (Jacc: $jacc_target), (MSE: $MSE_target)")
+plot_hopf_target_slice = plot(solution_target_slice; interpolate=true, xigs=xigs_2d, value=true, color_range=["black", "black"], title="$(N)D Hopf, $(slice_labels[i]) plane", legend=false);
+plot_DP_target_slice = plot(solution_slice_DP; interpolate=true, color_range=["black", "black"], grid=true, xigs=xigs_2d, value=true, title="True (DP), $(slice_labels[i]) plane", legend=false, alpha=0.5);
+plot(plot_hopf_target_slice, plot_DP_target_slice, layout=(2,1))
+
+## Total Comparisons
+
+MSE, MSEs = MSE_solution(solution, times)
+MSE_sample, MSEs_sample = MSE_solution(solution_sampled, times)
+
+solution_DP_values = convert(Vector{Any}, [V_N_DP(alltimes[ti], Xg) for ti=1:length(times)+1]);
 solution_DP = (solution[1], solution_DP_values);
-total_jacc, total_mse = compute_jaccard_overtime(solution, solution_DP, Xg), compute_MSE_overtime(solution, solution_DP)
+total_jacc = jaccard_solutions_overtime(solution, solution_DP, Xg)
+
+plot(times, MSEs, title="MSE over Solution Time, N=$N", label="Grid, WS: Spatiotemporal"); plot!(times, MSEs_sample, label="Random, WS: Temporal")
 
 # using PlotlyJS
 # plot_hopf = plot_nice(times, solution; interpolate=true, alpha=0.1); #using PlotlyJS
 # plot_DP = plot_nice(times, solution_DP; interpolate=true, alpha=0.1); #using PlotlyJS
 
-## Target Test
+## Profiling
+# using ProfileView
+# VSCodeServer.@profview solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true);
+# VSCodeServer.@profview solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand[:,1:2], th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true)
 
-# Q, center, radius = diagm(ones(N)), zeros(N), 0.25
+# using Profile
+# Profile.Allocs.@profile solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand[:,1:2], th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true)
+# AllocResults = Profile.Allocs.@profile solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true)
 
-# radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), ones(N-1)))
-# target_N = make_target(center, radius_N; Q=Q_N, type="ellipse")
+function N_dim_test(N, opt_p; sample_total=1000, Th=0.05, th=0.025)
 
-# # Xg_slice = Xg_xixj # xi - xj
-# Xg_slice = vcat(Xg_2d, zeros(N-2, size(Xg_2d, 2))) # xn - xi
+    A, B₁, B₂ = -0.5*I + hcat(vcat(0, -ones(N-1,1)), zeros(N,N-1)), vcat(zeros(1,N-1), 0.4*I), vcat(zeros(1,N-1), 0.1*I) # system
+    max_u, max_d, input_center, input_shapes = 0.5, 0.3, zeros(N-1), "box"
+    Q₁, c₁ = make_set_params(input_center, max_u; type=input_shapes) 
+    Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & 𝒟
+    system_N, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
-# target_N_os = (convert(Vector{Any}, [Xg_2d]), convert(Vector{Any}, [target_N[1](Xg_slice)]))
-# plot_target_N_os = plot(target_N_os; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in 0.]...), xigs=xigs_2d, value=false, title="Target - 4D Hopf, xi-xn plane", legend=false)
+    ## Target
+    Q, center, radius = diagm(ones(N)), zeros(N), 0.25
+    # Q, center, radius = diagm(ones(N)), zeros(N), 0.15
+    radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(1) * ones(N-1)))
+    # Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
+    # radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
+    target_N = make_target(center, radius_N; Q=Q_N, type="ellipse")
 
-# target_N_comb = (convert(Vector{Any}, [Xg_2d]), convert(Vector{Any}, [V_N_itp(V_i_itps_DP, Pis_xi, 0., Xg_slice)]))
-# plot_target_N_comb = plot(target_N_comb; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in 0.]...), xigs=xigs_2d, value=false, title="Target - 2Di DP, xi-xn plane", legend=false)
+    ## Times to Solve
+    Tf = 1.
+    times = collect(Th : Th : Tf);
 
-# plot(plot_target_N_os, plot_target_N_comb, size=(800,400))
+    ## Point(s) to Solve (any set works!)
+    bd = 1.0001
+    Xg_rand = 2bd*rand(N, sample_total) .- bd; # solve over random samples
 
-## 3-Plane Plot
+    ## Solve
+    solution_sampled, run_stats = Hopf_BRS(system_N, target_N, times; Xg=Xg_rand, th=th, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p, warm=true, warm_pattern="temporal", check_all=true, printing=true)
 
-N = 15
-Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
-V_N_itp(V_i_itps, Pis, t, XgN) = sum(fast_interp(V_i_itps[i], make_tXg(t, Pis[i] * XgN)) for i=1:N-1)
+    ## Score
+    MSE_overall, MSE_overtime = MSE_solution(solution_sampled, times)
+    exec_time_ppt = run_stats[1] / (size(Xg_rand, 2) * length(times)) # 60000 pt/batch * ppt-rate s/pt * 1/60 min/s = X min/batch
+    optimistic_batch_minutes = (1000 * exec_time_ppt) # optimistic bc memory allocation slows us down, only achieved in parallel
 
-# V_DP_itp = LessLinear2D_interpolations["g-20_m20_a1"]
-# V_i_NL_itps_DP = [V_DP_itp for i=1:N-1]
-
-# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m0_a0"], LessLinear2D_interpolations["g-20_m0_a0"]] # level 1
-# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m-20_a1"], LessLinear2D_interpolations["g-20_m-20_a1"]] # level 2
-# V_i_NL_itps_DP = [LessLinear2D_interpolations["g20_m-20_a20"], LessLinear2D_interpolations["g20_m20_a20"]] # level 3
-
-# V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m0_a0"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m0_a0"] for i=1:(N-1)/2], dims=1)
-V_i_NL_itps_DP = cat([LessLinear2D_interpolations["g20_m20_a1"] for i=1:(N-1)/2], [LessLinear2D_interpolations["g-20_m0_a0"] for i=1:(N-1)/2], dims=1) 
-
-plots_DP, titles = [], ["$(N)D DP, xn-xi plane", "$(N)D DP, xi-xj plane","$(N)D DP, xn-(xi=xj) plane"]
-for i=1:3
-
-    XgN = zeros(N,size(Xg_2d,2))
-    if i == 1
-        XgN[1:2,:] = Xg_2d
-    elseif i == 2
-        XgN[2,:] = Xg_2d[1,:]
-        XgN[3,:] = Xg_2d[2,:]
-    else
-        XgN[1,:] = Xg_2d[1,:]
-        XgN[2:end, :] = (Xg_2d[2,:] .* ones(size(Xg_2d,2), N-1))'
-    end
-
-    solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_NL_itps_DP, Pis_xi, alltimes[ti], XgN) for ti=1:length(times)+1]);
-    solution_DP = (solution_grids_2d, solution_DP_values);
-    plot_DP = plot(solution_DP; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs_2d, value=false, title=titles[i], legend=false, alpha=0.5)
-    push!(plots_DP, plot_DP)
-end
-plot(plots_DP..., layout=(1,3), size=(900,300))
-
-
-
-
-
-
-stop
-
-
-
-
-
-
-## Interpolate High-D Solutions
-
-## Test
-alltimes = vcat(0., times...)
-tXg = zeros(1+size(Xg,1), 0)
-for ti=1:length(times)+1
-    tXg = hcat(tXg, vcat(zero(solution[1][ti])[[1],:] .+ alltimes[ti], solution[1][ti]))
+    return MSE_overall, MSE_overtime, optimistic_batch_minutes
 end
 
-## grid
-V_itp_hopf = make_interpolation(solution, alltimes; xigs)
-Vg = @time fast_interp(V_itp_hopf, tXg)
+## Hopf Coordinate-Descent Parameters
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 100000, 1e-3, 10000, 1, 1, 1000000
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
+opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-# save("lin2d_hopf_interp_linear.jld", "V_itp", V_itp_hopf, "solution", solution, "alltimes", alltimes, "xigs", xigs)
-# V_itp_hopf_loaded = load("lin2d_hopf_interp_linear.jld")["V_itp"]
-# Vg = @time fast_interp(V_itp_hopf_loaded, tXg)
+N = 15; Th = 0.025; sample_total = 100;
+MSE_overall, MSE_overtime, optimistic_batch_minutes = N_dim_test(N, opt_p_cd; Th, sample_total);
+MSE_overall
+optimistic_batch_minutes
 
-## Plot
-Xg_near = tXg[:, abs.(Vg) .≤ 0.005]
-plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false)
-scatter!(eachrow(Xg_near[2:end,:])..., alpha=0.5)
+plot(collect(Th:Th:1.), MSE_overtime, title="MSE over Solution Time, N=$N", label="Random, WS: Temporal")
+MSE_overtime
 
-x = y = range(-0.95, stop = 0.95, length = 133)
-surface(x, y, (x, y) -> V_itp_hopf(y, x, 1.))
+## Iterative Sovles 
 
-### Compare With LessLinear Model with DP (hj_reachability)
+P_in_f(∇ϕX) = reshape(vcat(∇ϕX...), size(∇ϕX[1])..., length(∇ϕX))[:,:,2:end]
 
-ll2d1i_itps = load("LessLinear2D_1i_interpolations_res2e.jld")["LessLinear2D_interpolations"]
-V_itp_1 = ll2d1i_itps["g$(gamma1)_m$(mu1)_a$(alpha1)"]
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
+opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-p_sets = [
-    [0, 0, 0], ## Linear
-    [20, 0, 0], [-20, 0, 0], ## Less Linear Tier 1
-    [20, -20, 1], [-20, 20, 1], [20, 20, 1], [-20, -20, 1], ## Less Linear Tier 2
-    [20, -20, 20], [-20, 20, -20], [20, 20, 20], [-20, -20, -20], ## Less Linear Tier 3
-]
+solution_sampled_0, run_stats, _, ∇ϕXsT0 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true);
+MSE_overall_0, MSE_overtime_0 = MSE_solution(solution_sampled_0, times)
 
-## Test 3D solves of separate Systems
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 1, 1, 1, 1
+opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-p_set_1, p_set_2 = p_sets[4], p_sets[4]
+solution_sampled_1, run_stats, _, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT0));
+# solution_sampled_1, run_stats, _, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=rand(15,1000,10));
+MSE_overall_1, MSE_overtime_1 = MSE_solution(solution_sampled_1, times)
 
-gamma1, mu1, alpha1 = p_set_1; gamma2, mu2, alpha2 = p_set_2
-V_itp_1, V_itp_2 = LessLinear2D_interpolations["g$(gamma1)_m$(mu1)_a$(alpha1)"], LessLinear2D_interpolations["g$(gamma2)_m$(mu2)_a$(alpha2)"]
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
+# opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-bd, res, ϵ = 1, 0.05, .5e-7
-Xg3, xigs3, (lb3, ub3) = make_grid(bd, res, 3; return_all=true, shift=ϵ); # solve over grid
+solution_sampled_2, run_stats, _, ∇ϕXsT2 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT1));
+MSE_overall_2, MSE_overtime_2 = MSE_solution(solution_sampled_2, times)
 
-alltimes = vcat(0., times...)
-tXg3 = zeros(1+size(Xg3,1), 0)
-for ti=1:length(times)+1
-    tXg3 = hcat(tXg3, vcat(zero(Xg3)[[1],:] .+ alltimes[ti], Xg3))
-end
+plot(times, MSE_overtime_0, title="MSE over Solution Time, N=$N", label="Iter 0"); plot!(times, MSE_overtime_1, label="Iter 1"); plot!(times, MSE_overtime_2, label="Iter 2")
 
-P1 = [1 0 0 0; 0 1 0 0; 0 0 0 1]
-P2 = [1 0 0 0; 0 0 1 0; 0 0 0 1]
 
-@time Vg3 = fast_interp(V_itp_1, P1 * tXg3) .+ fast_interp(V_itp_2, P2 * tXg3)
-
-Xg3_near = tXg3[:, abs.(Vg3) .≤ 0.1]
-# plot(solution; interpolate=true, labels=vcat("Target", ["t=-$ti" for ti in times]...), color_range=["red", "blue"], grid=true, xigs=xigs, value=false)
-
-# plotlyjs()
-gr()
-scatter(eachrow(Xg3_near[2:end,:])..., alpha=0.5, xlims=[-1,1], ylims=[-1,1], zlims=[-1,1])
-
-sol_times_3 = convert(Vector{Any}, [Xg3 for i=1:length(times)+1])
-sol_vals = [Vg3[1+(i-1)*size(Xg3,2):i*size(Xg3,2)] for i=1:length(times)+1]
-plot((sol_times_3, sol_vals); xigs=xigs3, value=false, interpolate=false)
 
 

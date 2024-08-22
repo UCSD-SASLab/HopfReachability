@@ -119,7 +119,7 @@ p_sets = [
 LessLinear2D_interpolations = Dict("hopf" => V_itp_hopf)
 LessLinear2D_plots = Dict("hopf" => plot_hopf_leg)
 
-Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7, bc_grad_factor=1.)
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, Q, radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7)
 
 for p_set in p_sets
 
