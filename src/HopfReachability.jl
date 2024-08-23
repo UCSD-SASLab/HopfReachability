@@ -209,17 +209,17 @@ function Hopf_BRS(system, target, T;
             end
 
             ## Solve Hopf
-            ϕX[bi], dϕdz, p_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, p_init)
-            P_out[:, bi, Tix+1] = copy(dϕdz)
+            ϕX[bi], p_final, p_path = opt_method(system, target, Z[:, bi]; p2, game, tbH, opt_p, p_init)
+            P_out[:, bi, Tix+1] = copy(p_final)
             
-            # warm_new[:, bi] = copy(dϕdz)
+            # warm_new[:, bi] = copy(p_final)
             # if bi == last(index_pts); warm_old = copy(warm_new); end # overwrite warm matrix
 
             ## Store Optimization Path & Value
             if opt_tracking
                 vals = zeros(size(p_path, 2))
                 for (pix, p) in enumerate(eachcol(p_path))
-                    vals[pix] = Hopf(system, target, tbH, Z[:, bi], p_path[:,pix]; p2, game)
+                    vals[pix] = Hopf(system, target, tbH, Z[:, bi], p_path[:, pix]; p2, game)
                 end
                 push!(opt_data_Ti, (p_path, vals)); 
             end

@@ -18,7 +18,7 @@ V_DP_itp = LessLinear2D_interpolations["g0_m0_a0"]
 
 ##
 
-N = 15
+N = 100
 
 ## System & Game
 
@@ -45,10 +45,10 @@ times = collect(Th : Th : Tf);
 ## Point(s) to Solve (any set works!)
 bd, ppd, ϵ = 1.0001, 31, 0*.5e-7
 res = 2*bd/(ppd-1)
-# Xg, xigs, (lb, ub) = make_grid(bd, res, N; return_all=true, shift=ϵ); # solve over grid
+Xg, xigs, (lb, ub) = make_grid(bd, res, N; return_all=true, shift=ϵ); # solve over grid
 Xg_2d, xigs_2d, _ = make_grid(bd, res, 2; return_all=true, shift=ϵ); # solve over grid
 Xg_2d_hr, xigs_2d_hr, _ = make_grid(bd, 0.1 * res, 2; return_all=true, shift=ϵ); # solve over grid
-Xg_rand = 2bd*rand(N, 1000) .- bd .+ ϵ; # solve over random samples
+Xg_rand = 2bd*rand(N, 100) .- bd .+ ϵ; # solve over random samples
 
 ## Hopf Coordinate-Descent Parameters (optional, note the default are conserative/slower)
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
@@ -82,7 +82,7 @@ make_tXg(t, X) = vcat(t*ones(size(X,2))', X)
 # Pis_xi = [vcat(vcat(1, zeros(N-1))', vcat(zeros(i), 1, zeros(N-(i+1)))') for i=1:N-1]
 # V_N_DP(t, XgN) = sum(fast_interp(V_i_itps_DP[i], make_tXg(t, Pis_xi[i] * XgN)) for i=1:N-1)
 
-V_N_DP(t, X_N) = sum(fast_interp(V_DP_itp, make_tXg(t, view(X_N,[1, i+1],:))) for i=1:N-1)
+V_N_DP(t, X_N) = sum(fast_interp(V_DP_itp, make_tXg(t, view(X_N,[1, i+1],:))) for i=1:size(X_N,1)-1) # project to N-1 subspaces, getting val from DP interp
 
 function jaccard_solutions_overtime(solution_1, solution_2, Xg_shared; tix=2:length(solution_1[1]))
     n_inter, n_union = 0, 0
@@ -189,7 +189,7 @@ plot(times, MSEs, title="MSE over Solution Time, N=$N", label="Grid, WS: Spatiot
 # Profile.Allocs.@profile solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand[:,1:2], th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true)
 # AllocResults = Profile.Allocs.@profile solution_sampled, run_stats = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true)
 
-function N_dim_test(N, opt_p; sample_total=1000, Th=0.05, th=0.025)
+function N_dim_test(N, opt_p; sample_total=100, Th=0.1, th=0.025, P_in=nothing)
 
     A, B₁, B₂ = -0.5*I + hcat(vcat(0, -ones(N-1,1)), zeros(N,N-1)), vcat(zeros(1,N-1), 0.4*I), vcat(zeros(1,N-1), 0.1*I) # system
     max_u, max_d, input_center, input_shapes = 0.5, 0.3, zeros(N-1), "box"
@@ -214,23 +214,23 @@ function N_dim_test(N, opt_p; sample_total=1000, Th=0.05, th=0.025)
     Xg_rand = 2bd*rand(N, sample_total) .- bd; # solve over random samples
 
     ## Solve
-    solution_sampled, run_stats = Hopf_BRS(system_N, target_N, times; Xg=Xg_rand, th=th, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p, warm=true, warm_pattern="temporal", check_all=true, printing=true)
+    solution_sampled, run_stats, opt_data, P_final = Hopf_BRS(system_N, target_N, times; Xg=Xg_rand, th=th, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p, warm=true, warm_pattern="temporal", check_all=true, printing=true, opt_tracking=true, P_in)
 
     ## Score
     MSE_overall, MSE_overtime = MSE_solution(solution_sampled, times)
     exec_time_ppt = run_stats[1] / (size(Xg_rand, 2) * length(times)) # 60000 pt/batch * ppt-rate s/pt * 1/60 min/s = X min/batch
     optimistic_batch_minutes = (1000 * exec_time_ppt) # optimistic bc memory allocation slows us down, only achieved in parallel
 
-    return MSE_overall, MSE_overtime, optimistic_batch_minutes
+    return MSE_overall, MSE_overtime, optimistic_batch_minutes, opt_data, P_final
 end
 
 ## Hopf Coordinate-Descent Parameters
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 100000, 1e-3, 10000, 1, 1, 1000000
-vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^4, 1e-3, 10^4, 1, 1, 10^5
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-N = 15; Th = 0.025; sample_total = 100;
+N = 100; Th = 0.1; sample_total = 100;
 MSE_overall, MSE_overtime, optimistic_batch_minutes = N_dim_test(N, opt_p_cd; Th, sample_total);
 MSE_overall
 optimistic_batch_minutes
@@ -240,29 +240,90 @@ MSE_overtime
 
 ## Iterative Sovles 
 
-P_in_f(∇ϕX) = reshape(vcat(∇ϕX...), size(∇ϕX[1])..., length(∇ϕX))[:,:,2:end]
+P_in_f(∇ϕX) = reshape(hcat(∇ϕX[2:end]...), size(∇ϕX[1])..., length(∇ϕX)-1)
 
-vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
+function warmrefine_N_dim_sol(N, opt_p, its; kwargs...)
+    P_in = nothing
+    MSEs, MSEots, OBM, ODs, P_ins = zeros(its), [], zeros(its), [], []
+    for i=1:its
+        MSEs[i], MSEoti, OBM[i], ODi, P_final = N_dim_test(N, opt_p; P_in, kwargs...)
+        P_in = P_in_f(P_final)
+        push!(MSEots, MSEoti); push!(ODs, ODi); push!(P_ins, P_in)
+    end
+    return MSEs, MSEots, OBM, ODs, P_ins
+end
+
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-3, 50, 4, 5, 500
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-solution_sampled_0, run_stats, _, ∇ϕXsT0 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true);
-MSE_overall_0, MSE_overtime_0 = MSE_solution(solution_sampled_0, times)
+its = 3
+N = 3
+MSEs, MSEots, OBM, ODs, P_ins = warmrefine_N_dim_sol(N, opt_p_cd, its; Th = 0.025, sample_total = 100);
 
-vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 1, 1, 1, 1
+mse_ot = plot(title="MSEs overtime, N=$N")
+for i=1:its
+    plot!(MSEots[i], label="iter $i")
+end
+mse_ot
+
+opt_sample_plot = plot(title="Multi-iter Optim Value")
+sample_ix, iter_length = 1, 0
+for i=1:its
+    p_path, vals = ODs[i][sample_ix][sample_ix]
+    println("ITER $i, FIRST:", round.(p_path[:,1],digits=6))
+    println("ITER $i, LAST :", round.(p_path[:,end],digits=6))
+    plot!(1+iter_length:iter_length + length(vals), vals, label="iter $i")
+    iter_length += length(vals)
+end
+opt_sample_plot
+
+
+## Iterative test manual
+
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 1, 1e-3, 100, 1, 1, 300
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 2, 1e-3, 1000, 1, 1, 10000
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
-
-solution_sampled_1, run_stats, _, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT0));
-# solution_sampled_1, run_stats, _, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=rand(15,1000,10));
-MSE_overall_1, MSE_overtime_1 = MSE_solution(solution_sampled_1, times)
 
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
 # opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
 
-solution_sampled_2, run_stats, _, ∇ϕXsT2 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT1));
+solution_sampled_0, run_stats_0, opt_data_0, ∇ϕXsT0 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, opt_tracking=true);
+MSE_overall_0, MSE_overtime_0 = MSE_solution(solution_sampled_0, times)
+optimistic_batch_time_0 = 1000 * run_stats_0[1] / (size(Xg_rand, 2) * length(times)) # time (min) to solve 60k pts, if parallelized
+
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 20, 1e-3, 1000, 1, 1, 10000
+# opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
+
+solution_sampled_1, run_stats_1, opt_data_1, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT0), opt_tracking=true);
+# solution_sampled_1, run_stats, _, ∇ϕXsT1 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=rand(15,1000,10));
+MSE_overall_1, MSE_overtime_1 = MSE_solution(solution_sampled_1, times)
+optimistic_batch_time_1 = 1000 * run_stats_1[1] / (size(Xg_rand, 2) * length(times)) # time (min) to solve 60k pts, if parallelized
+
+# vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 200, 1e-3, 2000, 1, 1, 10000
+# opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
+
+solution_sampled_2, run_stats_2, opt_data_2, ∇ϕXsT2 = Hopf_BRS(system, target, times; Xg=Xg_rand, th=0.025, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p_cd, warm=true, warm_pattern="temporal", check_all=true, printing=true, P_in=P_in_f(∇ϕXsT1), opt_tracking=true);
 MSE_overall_2, MSE_overtime_2 = MSE_solution(solution_sampled_2, times)
 
 plot(times, MSE_overtime_0, title="MSE over Solution Time, N=$N", label="Iter 0"); plot!(times, MSE_overtime_1, label="Iter 1"); plot!(times, MSE_overtime_2, label="Iter 2")
 
+opt_sample_plot = plot(title="Multi-iter Optim Value")
+sample_ix, iter_length = 1, 0
+ODs = [opt_data_0, opt_data_1, opt_data_2]
+for i=1:its
+    p_path, vals = ODs[i][sample_ix][sample_ix]
+    println("ITER $i, FIRST:", round.(p_path[:,1],digits=6))
+    println("ITER $i, LAST :", round.(p_path[:,end],digits=6))
+    plot!(1+iter_length:iter_length + length(vals), vals, label="iter $i")
+    iter_length += length(vals)
+end
+opt_sample_plot
 
 
+## Retest
 
+vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 2, 1e-3, 1000, 1, 1, 10000
+opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
+
+MSE_overall, MSE_overtime, optimistic_batch_minutes = N_dim_test(N, opt_p_cd; sample_total=100, Th=0.1, th=0.025, P_in=P_in_f(∇ϕXsT1));
+MSE_overall, optimistic_batch_minutes
