@@ -74,7 +74,21 @@ end
 ## grid
 V_itp_hopf = make_interpolation(solution, alltimes; xigs)
 V_itp_hopf = make_interpolation(solution_BRTs, alltimes; xigs)
-Vg = @time fast_interp(V_itp_hopf, tXg)
+Vg = @time fast_interp(V_itp_hopf, tXg);
+
+function fast_interp_grad(_V_itp, tXg; compute_grad=false)
+    Vg = zeros(size(tXg,2))
+    for i=1:length(Vg); Vg[i] = _V_itp(tXg[:,i][end:-1:1]...); end # (assumes t in first row)
+    if !compute_grad
+        return Vg
+    else
+        G = zeros(size(tXg,2), size(tXg,1)-1)
+        for i=1:size(G,1); G[i,:] = Interpolations.gradient(_V_itp, tXg[:,i][end:-1:1]...)[end-1:-1:1]; end # (assumes t in first row)
+        return Vg, G
+    end
+end
+
+Vg = @time fast_interp_grad(V_itp_hopf, tXg);
 
 # ## scatter (works but slow)
 # V_itp_hopf, fast_interp = make_interpolation(solution, alltimes; xigs, method="scatter")
