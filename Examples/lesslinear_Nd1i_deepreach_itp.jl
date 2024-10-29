@@ -12,7 +12,8 @@ using JLD2, Interpolations, ScatteredInterpolation, ImageFiltering
 
 using Interpolations, JLD
 path_to_interps = "/Users/willsharpless/Library/Mobile Documents/com~apple~CloudDocs/Herbert/DRHopf_interps/"
-LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r25e-2_c20.jld", "LessLinear2D_interpolations");
+# LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r25e-2_c20.jld", "LessLinear2D_interpolations");
+LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r15e-2_c20.jld", "LessLinear2D_interpolations");
 # LessLinear2D_interpolations = load(path_to_interps * "LessLinear2D1i_interpolations_res1e-2_r4e-1_el_1_5.jld", "LessLinear2D_interpolations");
 V_DP_itp = LessLinear2D_interpolations["g0_m0_a0"]
 
@@ -29,8 +30,8 @@ Q₂, c₂ = make_set_params(input_center, max_d; type=input_shapes) # 𝒰 & �
 system, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
 ## Target
-Q, center, radius = diagm(ones(N)), zeros(N), 0.25
-# Q, center, radius = diagm(ones(N)), zeros(N), 0.15
+# Q, center, radius = diagm(ones(N)), zeros(N), 0.25
+Q, center, radius = diagm(ones(N)), zeros(N), 0.15
 radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(1) * ones(N-1)))
 # Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
 # radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
@@ -199,12 +200,13 @@ function N_dim_test(N, opt_p; sample_total=100, Th=0.1, th=0.025, P_in=nothing, 
     system_N, game = (A, B₁, B₂, Q₁, c₁, Q₂, c₂), "reach"
 
     ## Target
-    Q, center, radius = diagm(ones(N)), zeros(N), 0.25
+    Q, center, radius = diagm(ones(N)), zeros(N), 0.15
     # Q, center, radius = diagm(ones(N)), zeros(N), 0.15
     radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(1) * ones(N-1)))
     # Q, center, radius = diagm(inv.([1., 5.])), zero(A[:,1]), 0.4
     # radius_N, Q_N = sqrt(N-1) * radius, diagm(vcat(1/(N-1), inv(5) * ones(N-1)))
     target_N = make_target(center, radius_N; Q=Q_N, type="ellipse")
+    # print("J(X):", target_N[1](X))
 
     ## Times to Solve
     Tf = 1.
@@ -216,7 +218,7 @@ function N_dim_test(N, opt_p; sample_total=100, Th=0.1, th=0.025, P_in=nothing, 
 
     ## Solve
     solution_sampled, run_stats, opt_data, P_final = Hopf_BRS(system_N, target_N, times; X=X, th=th, input_shapes, game, opt_method=Hopf_cd, opt_p=opt_p, warm=true, warm_pattern="temporal", check_all=true, printing=true, opt_tracking=true, P_in)
-
+    
     ## Score
     MSE_overall, MSE_overtime = MSE_solution(solution_sampled, times)
     exec_time_ppt = run_stats[1] / (size(Xg_rand, 2) * length(times)) # 60000 pt/batch * ppt-rate s/pt * 1/60 min/s = X min/batch
@@ -230,9 +232,26 @@ vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 5, 1e-
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 100000, 1e-3, 10000, 1, 1, 1000000
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^4, 1e-3, 10^4, 1, 1, 10^5
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
+opt_p_cd = (0.01, 5, 1e-3, 50, 4, 5, 500)
+
+N = 7; Th = 0.001; sample_total = 100;
+opt_p_cd = (0.01, 1, 1e-3, 300, 1, 1, 300)
+MSE_overall, MSE_overtime, optimistic_batch_minutes, P_final, (solution_sampled, system_N, target_N) = N_dim_test(N, opt_p_cd; Th, th=0.001, sample_total); # Xg=Xg_rand
+MSE_overall
+optimistic_batch_minutes
+
+N = 7; Th = 0.001;
+# X = [[0.098,  0.430,  0.206,  0.090,  -0.153, 0.292,  -0.125];;]
+X = [0.09762701; 0.43037874; 0.20552675; 0.08976637; -0.1526904; 0.29178822; -0.124825574;;]
+opt_p_cd = (0.01, 1, 1e-3, 100, 1, 1, 100)
+# opt_p_cd = (0.01, 1, 1e-3, 300, 1, 1, 300)
+MSE_overall, MSE_overtime, optimistic_batch_minutes, opt_data, P_final, (solution_X, system_N, target_N) = N_dim_test(N, opt_p_cd; Th, th=0.001, X); # Xg=Xg_rand
+MSE_overall
+MSE_overtime
+optimistic_batch_minutes
 
 N = 15; Th = 0.01; sample_total = 100;
-MSE_overall, MSE_overtime, optimistic_batch_minutes, P_final, (solution_sampled, system_N, target_N) = N_dim_test(N, opt_p_cd; Th, th=0.001, sample_total); # Xg=Xg_rand
+MSE_overall, MSE_overtime, optimistic_batch_minutes, opt_data, P_final, (solution_sampled, system_N, target_N) = N_dim_test(N, opt_p_cd; Th, th=0.001, sample_total); # Xg=Xg_rand
 MSE_overall
 optimistic_batch_minutes
 
@@ -289,6 +308,7 @@ vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 1, 1e-
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 2, 1e-3, 1000, 1, 1, 10000
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 1, 1e-3, 10000, 1, 1, 10000
 opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
+opt_p_cd = (0.01, 1, 1e-3, 300, 1, 1, 300)
 
 # vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its = 0.01, 10^5, 1e-3, 10^5, 1, 1, 10^6
 # opt_p_cd = (vh, stepsz, tol, conv_runs_rqd, stepszstep_its, max_runs, max_its)
