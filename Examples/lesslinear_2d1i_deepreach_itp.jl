@@ -108,7 +108,7 @@ surface(x, y, (x, y) -> V_itp_hopf(y, x, 1.))
 
 ### Compare With LessLinear Model with DP (hj_reachability)
 
-c = 20
+c = 5.
 p_sets = [
     [0, 0, 0], ## Linear
     [c, 0, 0], [-c, 0, 0], ## Less Linear Tier 1
@@ -119,7 +119,7 @@ p_sets = [
 LessLinear2D_interpolations = Dict("hopf" => V_itp_hopf)
 LessLinear2D_plots = Dict("hopf" => plot_hopf_leg)
 
-Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, inv.(Q), radius; shape="ball", lb, ub, res=200, ϵ = 0.5e-7, bc_grad_factor=0.5)
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, inv.(Q), radius; shape="ball", lb, ub, res=100, ϵ = 0.5e-7, bc_grad_factor=0.5)
 solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
 
 for p_set in p_sets
@@ -149,8 +149,8 @@ end
 full_plot = plot(plot_hopf_BRTs, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
 
 nametag = "res1e-2_r$(Int(radius*100))e-2_c$(c)"
-save("LessLinear2D1i_interpolations_$nametag.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
-savefig(full_plot, "LessLinear2d1i_plot_$nametag.png")
+# save("LessLinear2D1i_interpolations_$nametag.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
+# savefig(full_plot, "LessLinear2d1i_plot_$nametag.png")
 
 # save("LessLinear2D1i_interpolations_res1e-2_r4e-1_el_1_5.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
 # savefig(full_plot, "LessLinear2d1i_plot_res1e-2_r4e-1_el_1_5.png")
@@ -174,10 +174,10 @@ for p_set in p_sets
     XgN = zeros(N,size(Xg,2))
 
     # xn vs. xi slice, stretches with increasing dimension
-    XgN[1:2,:] = Xg 
+    # XgN[1:2,:] = Xg 
 
     # xn vs. (xi=xj) slice, remains constant
-    # XgN[1,:], XgN[2:end, :] = Xg[1,:], (Xg[2,:] .* ones(size(Xg,2), N-1))'
+    XgN[1,:], XgN[2:end, :] = Xg[1,:], (Xg[2,:] .* ones(size(Xg,2), N-1))'
 
     solution_DP_values = convert(Vector{Any}, [V_N_itp(V_i_NL_itps_DP, Pis_xi, alltimes[ti], XgN) for ti=1:length(times)+1]);
     solution_DP = (solution_times_DP, solution_DP_values);
@@ -244,3 +244,53 @@ sol_vals = [Vg3[1+(i-1)*size(Xg3,2):i*size(Xg3,2)] for i=1:length(times)+1]
 plot((sol_times_3, sol_vals); xigs=xigs3, value=false, interpolate=false)
 
 
+### Compare With LessLinear Model with DP (hj_reachability) with Lambda Variation
+
+c = 5
+p_sets = [
+    [0, 0, 0], ## Linear
+    [c, 0, 0], [-c, 0, 0], ## Less Linear Tier 1
+    [c, -c, 1], [-c, c, 1], [c, c, 1], [-c, -c, 1], ## Less Linear Tier 2
+    # [c, -c, c], [-c, c, -c], [c, c, c], [-c, -c, -c], ## Less Linear Tier 3
+]
+lambdas = [0.1, 0.2, 0.5]
+
+LessLinear2D_interpolations = Dict("hopf" => V_itp_hopf)
+LessLinear2D_plots = Dict("hopf" => plot_hopf_leg)
+
+Xg_DP, Xg_DPpy, ϕ0Xg_DP, xigs_DP = hjr_init(center, inv.(Q), radius; shape="ball", lb, ub, res=100, ϵ = 0.5e-7, bc_grad_factor=0.5)
+solution_times_DP = convert(Vector{Any}, [Xg_DP for i=1:length(times)+1])
+
+for p_set in p_sets
+
+    gamma, mu, alpha = p_set
+
+    for lambda in lambdas
+
+        lesslin_dynamics_DP = hjr_lesslin.LessLinear2D_1input(gamma=lambda * gamma, mu=lambda * mu, alpha=alpha)
+        DP_solution_BRT = hjr_solve(Xg_DPpy, ϕ0Xg_DP, [lesslin_dynamics_DP], times; BRS=false)
+
+        plot_DP_BRT_ll2d = plot((solution_times_DP, DP_solution_BRT[1]); xigs=xigs_DP, value=false, title="Less (γ=$gamma, μ=$mu, α=$alpha, λ=$lambda) BRT - DP", labels=vcat("Target", ["t=-$ti" for ti in times]...), legend=false);
+
+        # pair_comp_plot = plot(plot_hopf, plot_DP_BRT_ll2d, size=(600, 300), titlefontsize=8, legendfont=6, legend=false)
+        # display(pair_comp_plot)
+
+        ## Make Interpolation from DP
+
+        solution_ll2d_BRT_DP = (solution_times_DP, DP_solution_BRT[1]); # BRT has more stable DP solns
+
+        V_itp_DP = make_interpolation(solution_ll2d_BRT_DP, alltimes; xigs=xigs_DP)
+        # Vg_DP = @time fast_interp(V_itp_DP, tXg2)
+
+        # save("llin2d_1i_g$(gamma)_m$(mu)_a$(alpha)_DP_interp_linear_res.jld", "V_itp", V_itp_DP, "solution", solution_ll2d_BRT_DP, "alltimes", alltimes, "xigs", xigs_DP)
+        LessLinear2D_interpolations["g$(gamma)_m$(mu)_a$(alpha)_lp$(Int(10 * lambda))"] = V_itp_DP
+        LessLinear2D_plots["g$(gamma)_m$(mu)_a$(alpha)_lp$(Int(10 * lambda))"] = plot_DP_BRT_ll2d
+    end
+end
+# full_plot = plot(plot_hopf_leg, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
+full_plot = plot(plot_hopf_BRTs, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)_lp$(Int(10 * lambdas[1]))"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
+full_plot = plot(plot_hopf_BRTs, [LessLinear2D_plots["g$(g)_m$(m)_a$(a)_lp$(Int(10 * lambdas[2]))"] for (g,m,a) in p_sets]..., layout=(3,4), size=(800, 600), titlefont=6, legendfontsize=4, xtickfontsize=5, ytickfontsize=5, dpi=300)
+
+nametag = "res1e-2_r$(Int(radius*100))e-2_c$(c)_lambdavar"
+save("LessLinear2D1i_interpolations_$nametag.jld", "LessLinear2D_interpolations", LessLinear2D_interpolations)
+# savefig(full_plot, "LessLinear2d1i_plot_$nametag.png")
