@@ -4,3 +4,14 @@
 .vscode
 
 .vscode/settings.json
+
+examples/DP_comparison_files/Canoe/figs/
+examples/DP_comparison_files/Canoe/solutions/
+examples/DP_comparison_files/Canoe_BRRT/bounded/
+examples/DP_comparison_files/Canoe_BRRT/unbounded/
+examples/DP_comparison_files/Conveyor/figs/
+examples/DP_comparison_files/Conveyor/solutions/
+examples/DP_comparison_files/Conveyor_BRAAT/axes/
+examples/DP_comparison_files/Conveyor_BRAAT/ball/
+
+Canoe*.mp4

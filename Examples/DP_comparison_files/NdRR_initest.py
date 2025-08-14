@@ -3,7 +3,6 @@
 
 # In[2]:
 
-
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,6 +12,7 @@ import matplotlib.animation as anim
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from scipy import integrate as ode
 
 import hj_reachability as hj
 
@@ -29,8 +29,8 @@ config.update("jax_enable_x64", True)
 np.set_printoptions(formatter={'float': '{: >9.10f}'.format})
 jnp.set_printoptions(formatter={'float': '{: >9.10f}'.format}) 
 
-CURRENT_H = 0.5
-CURRENT_V = 0.5
+CURRENT_H = 0.25
+CURRENT_V = 0.25
 
 # %%
 
@@ -79,6 +79,11 @@ def BRRT(t, v, V1, V2, times, rBC1, rBC2, lam=0.):
                        jnp.minimum(jnp.maximum(rBC2, V1[i,...] + lam) - jnp.maximum(lam, 0), 
                                    jnp.maximum(rBC1 + lam, V2[i,...]) - jnp.maximum(lam, 0)))
 
+    # Should be equal to
+    # return jnp.minimum(v, 
+    #                    jnp.minimum(jnp.maximum(rBC2 - lam, V1[i,...]) + jnp.minimum(lam, 0), 
+    #                                jnp.maximum(rBC1 + lam, V2[i,...]) - jnp.maximum(lam, 0)))
+
 # Ultimately these need to be wrapped, e.g.
 # def vpp(t, v): return BRRT(t, v, values_reach_1, values_reach_2, times, target_values_1(t), target_values_2(t), lam)
     
@@ -90,41 +95,52 @@ diffgame_nlin = Canoe(u_bd=u_bd, d_bd=d_bd, alpha=0.1, control_mode="min", distu
 
 ## params
 N = 1
+bounded_bc = True
 lb_x, ub_x, lb_y, ub_y = -1.25, 1.25, -0.5, 2.
 ubs = np.ravel(np.column_stack((ub_x * np.ones(N), ub_y * np.ones(N))))
 lbs = np.ravel(np.column_stack((lb_x * np.ones(N), lb_y * np.ones(N))))
 
-grid_L = 501
+grid_L = 401
 
 ntimes = 101
 TF = 2.
 times = -np.linspace(0., TF, ntimes)
 
-grid_pad=2.
+grid_pad=0.5
 grid = hj.Grid.from_lattice_parameters_and_boundary_conditions(hj.sets.Box(lbs-grid_pad, ubs+grid_pad), [grid_L for _ in range(2*N)])
 
 ## Reach Ball (static)
-bc_alpha = 0.5
-target_width = 0.75
+target_width = 0.5
 target_height = 1.
 c1, c2 = jnp.array([-target_width, target_height]), jnp.array([target_width, target_height])
-rReach = 0.2
-def target_values_1(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1), axis=-1) - rReach))
-def target_values_2(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c2), axis=-1) - rReach))
-
 def c1_tv(t): return jnp.array([-1.0 - CURRENT_H * t, target_height])
-def target_values_1_tv(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1_tv(t)), axis=-1) - rReach))
+rReach = 0.2
+
+if bounded_bc:
+    bc_alpha = 0.5
+    def target_values_1(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1), axis=-1) - rReach))
+    def target_values_2(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c2), axis=-1) - rReach))
+    def target_values_1_tv(t): return bc_alpha * jnp.tanh((jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1_tv(t)), axis=-1) - rReach))
+else:
+    # NO TANH
+    def target_values_1(t): return (jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1), axis=-1) - rReach)
+    def target_values_2(t): return (jnp.linalg.norm(jnp.subtract(grid.states[..., :], c2), axis=-1) - rReach)
+    def target_values_1_tv(t): return (jnp.linalg.norm(jnp.subtract(grid.states[..., :], c1_tv(t)), axis=-1) - rReach)
 
 ## Define BC with post-processors (with values = bc(0.))
 init_values_1 = target_values_1(0.)
 init_values_2 = target_values_2(0.)
-init_values = jnp.minimum(target_values_1(0.), target_values_2(0.))
+init_values = jnp.maximum(target_values_1(0.), target_values_2(0.))
 
 init_values_1_tv = target_values_1_tv(0.)
-init_values_tv = jnp.minimum(target_values_1_tv(0.), target_values_2(0.))
+init_values_tv = jnp.maximum(target_values_1_tv(0.), target_values_2(0.))
 
-def init_values_lam(lam): return BRRT(0., jnp.inf * jnp.abs(target_values_1(0.)), target_values_1(0.), target_values_2(0.), times, target_values_1(0.), target_values_2(0.), lam)
-def init_values_lam_tv(lam): return BRRT(0., jnp.inf * jnp.abs(target_values_1_tv(0.)), target_values_1(0.), target_values_2(0.), times, target_values_1_tv(0.), target_values_2(0.), lam)
+# def init_values_lam(lam): return jnp.maximum(target_values_1(0.) + lam, target_values_2(0.)) - jnp.maximum(lam, 0)
+def init_values_lam(lam): return jnp.maximum(target_values_1(0.) - jnp.maximum(-lam, 0), target_values_2(0.) + jnp.maximum(lam, 0))
+# def init_values_lam_tv(lam): return jnp.maximum(target_values_1_tv(0.) + lam, target_values_2(0.)) - jnp.maximum(lam, 0)
+def init_values_lam_tv(lam): return jnp.maximum(target_values_1_tv(0.) - jnp.maximum(-lam, 0), target_values_2(0.) + jnp.maximum(lam, 0))
+
+lambdas = [-1., -0.2, 0., 0.2, 1.] if bounded_bc else [-3., -0.2, 0., 0.2, 3.]
 
 # %% 
 
@@ -226,15 +242,15 @@ reach_values_stat, BRRT_fig = solveplot(diffgame_lin, init_values_lam(0.), BRRT_
 
 ## Two-Target - BRRT lambda variations
 
-for lam in [-1., -0.2, 0., 0.2, 1.]:
+# for lam in lambdas:
     
-    # Linear
-    def BRRT_stat_pp(t,vlast,v): return BRRT(t, v, reach_values_1, reach_values_2, times, target_values_1(t), target_values_2(t), lam=lam)
-    reach_values_stat, BRRT_fig = solveplot(diffgame_lin, init_values_lam(lam), BRRT_stat_pp, tf=4., ntimes=ntimes, title=f"Canoe BRRT - Lambda {lam:2.2f} (Linear)", plot_bcs=True)
+#     # Linear
+#     def BRRT_stat_pp(t,vlast,v): return BRRT(t, v, reach_values_1, reach_values_2, times, target_values_1(t), target_values_2(t), lam=lam)
+#     reach_values_stat, BRRT_fig = solveplot(diffgame_lin, init_values_lam(lam), BRRT_stat_pp, tf=TF, ntimes=ntimes, title=f"Canoe BRRT - Lambda {lam:2.2f} (Linear)", plot_bcs=True)
     
     # # Nonlinear
     # def BRRT_stat_nlin_pp(t,vlast,v): return BRRT(t, v, reach_values_nlin_1, reach_values_nlin_2, times, target_values_1(t), target_values_2(t))
-    # reach_values_stat, BRRT_fig = solveplot(diffgame_nlin, init_values_lam(0.), BRRT_stat_nlin_pp, tf=4., ntimes=ntimes, title="Canoe BRRT (Linear)", plot_bcs=True)
+    # reach_values_stat, BRRT_fig = solveplot(diffgame_nlin, init_values_lam(0.), BRRT_stat_nlin_pp, tf=TF, ntimes=ntimes, title="Canoe BRRT (Linear)", plot_bcs=True)
 
 # %%
 
@@ -263,9 +279,58 @@ def solve_BRRTpanel(diffgame, init_values_lam, v1sol, v2sol, lams, target_value_
 
     return values_lams, times
 
-# %%
+# %% 
 
-def plot_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2, vabs=0.075, xlims=(lbs[0], ubs[0]), ylims=(lbs[1], ubs[1])):
+# Plotting
+
+def model(t, x, grad_values_, grid_, diffgame_, times_):
+    i = np.argmin(np.abs(times_ - t))
+
+    grad_value = grid_.interpolate(grad_values_[i], state = x)
+    
+    u = diffgame_.optimal_control(x, t, grad_value)
+    d = diffgame_.optimal_disturbance(x, t, grad_value)
+    fx = diffgame_.open_loop_dynamics(x, t)
+    Bu = diffgame_.control_jacobian(x,t)
+    Bd = diffgame_.disturbance_jacobian(x,t)
+    
+    dx = fx + Bu @ u + Bd @ d
+    dx = dx.tolist()
+    return dx
+
+def characteristic(t0, x0, values_, grid_, diffgame_, times_):
+    grad_values = [grid_.grad_values(values_[i,...]) for i in range(len(times))]
+    sol = ode.solve_ivp(lambda t,x:model(t, x, grad_values, grid_, diffgame_, times_), [t0,0], x0, max_step=.05)
+    return sol
+
+def solve_characteristic(t0, x0, diffgame_, grid_, times_, reach_values_, reach_values_1_, reach_values_2_, target_values_1_, target_values_2_):
+
+    ## Solve combined
+    sol = characteristic(t0, x0, reach_values_, grid_, diffgame_, times_)
+
+    ## Solve Second
+    target_values_1_s = np.array([grid.interpolate(target_values_1_, state = sol.y[:,i]) for i in range(len(sol.t))])
+    target_values_2_s = np.array([grid.interpolate(target_values_2_, state = sol.y[:,i]) for i in range(len(sol.t))])
+
+    i1 = np.argmax(target_values_1_s < -.01) if any(target_values_1_s < 0) else np.infty
+    i2 = np.argmax(target_values_2_s < -.01) if any(target_values_2_s < 0) else np.infty
+
+    if i1 < i2:
+        newsol  = characteristic(sol.t[i1], sol.y[:,i1], reach_values_2_, grid_, diffgame_, times_)
+    else:
+        newsol  = characteristic(sol.t[i2], sol.y[:,i2], reach_values_1_, grid_, diffgame_, times_)
+
+    ## Combine
+    i = min(i1,i2)
+    ts = np.concatenate([sol.t[:i], newsol.t[i:]])
+    ys = np.concatenate([sol.y[:,:i], newsol.y[:,i:]], axis = 1)
+
+    # to plot: ax.plot(ys[0,:], ys[1,:], color = 'k', label = 'Trajectory')
+    return ts, ys
+
+def plot_BRRTpanel(values_lams, lams, times, i, target_values_1_, target_values_2_, vabs=0.075, xlims=(lbs[0], ubs[0]), ylims=(lbs[1], ubs[1]), 
+                   solve_opt_traj=False, x0=np.array([0., 0.]), diffgame_=diffgame_lin, grid_=grid,
+                   reach_values_1_=reach_values_1, reach_values_2_=reach_values_2):
 
     # times = np.linspace(ti, tf, ntimes)
     vmin, vmax = -vabs, vabs
@@ -296,6 +361,10 @@ def plot_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2
         ax.contour(grid.coordinate_vectors[0], grid.coordinate_vectors[1], target_values_1(ti).T, levels=0, colors="black", linewidths=3)
         ax.contour(grid.coordinate_vectors[0], grid.coordinate_vectors[1], target_values_2(ti).T, levels=0, colors="black", linewidths=3)
 
+        if solve_opt_traj:
+            ts, ys = solve_characteristic(ti, x0, diffgame_, grid_, times, values_lams[li], reach_values_1_, reach_values_2_, target_values_1_, target_values_2_)
+            ax.plot(ys[0,:], ys[1,:], color = 'k')
+
         ## Finish Plot
         ax.set_title(f"t = -{ti:2.2f}, λ={lams[li]:2.2f}")
         ax.set_xlim(xlims)
@@ -319,9 +388,9 @@ def plot_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2
 
     return fig
 
-# %%
-
-def anim_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2, bounce=False, vabs=0.075, xlims=(lbs[0], ubs[0]), ylims=(lbs[1], ubs[1])):
+def anim_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2, bounce=False, vabs=0.075, xlims=(lbs[0], ubs[0]), ylims=(lbs[1], ubs[1]),
+                   solve_opt_traj=False, x0=np.array([0., 0.]), diffgame_=diffgame_lin, grid_=grid,
+                   reach_values_1_=reach_values_1, reach_values_2_=reach_values_2):
 
     # times = np.linspace(ti, tf, ntimes)
     vmin, vmax = -vabs, vabs
@@ -373,6 +442,10 @@ def anim_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2
                 levels=0,
                 colors="black",
                 linewidths=3)
+        
+        if solve_opt_traj:
+            ts, ys = solve_characteristic(ti, x0, diffgame_, grid_, times, values_lams[li], reach_values_1_, reach_values_2_, target_values_1_, target_values_2_)
+            ax.plot(ys[0,:], ys[1,:], color = 'k')
 
         # Annotations
         ax.set_xlim(xlims)
@@ -412,34 +485,36 @@ def anim_BRRTpanel(values_lams, lams, times, i, target_values_1, target_values_2
 
 # %%
 
-## Ball - BRAAT lambda panel
-lams=[-1., -0.2, 0., 0.2, 1.]
+## Two-Target - BRRT lambda panel
 
 ## Linear
-BRRT_values_lam_lin, times = solve_BRRTpanel(diffgame_lin, init_values_lam, reach_values_1, reach_values_2, lams, target_values_1, target_values_2) 
+BRRT_values_lam_lin, times = solve_BRRTpanel(diffgame_lin, init_values_lam, reach_values_1, reach_values_2, lambdas, target_values_1, target_values_2) 
 
 # ## Nonlnear
-# BRAAT_values_lam_nlin, times = solve_BRAATpanel(diffgame_nlin, init_values_reachavoid_ball_lam, BAT_values_nlin_ball_full, lams, reach_values, avoid_values_ball)
+# BRAAT_values_lam_nlin, times = solve_BRAATpanel(diffgame_nlin, init_values_reachavoid_ball_lam, BAT_values_nlin_ball_full, lambdas, reach_values, avoid_values_ball)
+
+# %%
 
 ## Plot
-BRRT_lam_lin_fig = plot_BRRTpanel(BRRT_values_lam_lin, lams, times, -1, target_values_1, target_values_2)
-# BRRT_lam_nlin_fig = plot_BRRTpanel(BRRT_values_lam_nlin, lams, times, -1)
+
+BRRT_lam_lin_fig = plot_BRRTpanel(BRRT_values_lam_lin, lambdas, times, -1, target_values_1, target_values_2)
+# BRRT_lam_nlin_fig = plot_BRRTpanel(BRRT_values_lam_nlin, lambdas, times, -1)
 
 # %%
 
 ## Two-Target - BRRT lambda panel anim
 
 ## Linear
-BRRT_lam_lin_stat_anim = anim_BRRTpanel(BRRT_values_lam_lin, lams, times, -1, target_values_1, target_values_2, bounce=True)
+BRRT_lam_lin_stat_anim = anim_BRRTpanel(BRRT_values_lam_lin, lambdas, times, -1, target_values_1, target_values_2, bounce=True)
 # HTML(BRRT_lam_lin_stat_anim.to_jshtml())
 
-# BRRT_lam_lin_stat_anim.save('BRRT_lam_lin_stat_anim.mp4', writer='ffmpeg', fps=25)
+# BRRT_lam_lin_stat_anim.save('Canoe2D_BRRT_lam_lin_stat_anim.mp4', writer='ffmpeg', fps=25)
 
 # ## Nonlinear
-# BRAAT_lam_nlin_anim = anim_BRRTpanel(BRAAT_values_lam_nlin, lams, times, -1, bounce=True)
+# BRAAT_lam_nlin_anim = anim_BRRTpanel(BRAAT_values_lam_nlin, lambdas, times, -1, bounce=True)
 # HTML(BRAAT_lam_nlin_anim.to_jshtml())
 
-# # BRAAT_lam_nlin_anim.save('BRAAT_lam_ball_nlin_anim.mp4', writer='ffmpeg', fps=25)
+# # BRAAT_lam_nlin_anim.save('Canoe2D_BRAAT_lam_ball_nlin_anim.mp4', writer='ffmpeg', fps=25)
 
 # %% 
 
@@ -458,7 +533,7 @@ reach_values_1_tv, BRT_fig_1_tv = solveplot(diffgame_lin, init_values_1_tv, BRT1
 def BRRT_tv_pp(t,vlast,v): return BRRT(t, v, reach_values_1_tv, reach_values_2, times, target_values_1_tv(t), target_values_2(t))
 
 # Linear
-reach_values_tv, BRRT_fig = solveplot(diffgame_lin, init_values_lam_tv(0.), BRRT_tv_pp, target_values_1_=target_values_1_tv, ntimes=ntimes, title="Canoe BRRT TV (Linear)", plot_bcs=True)
+reach_values_tv, BRRT_fig_tv = solveplot(diffgame_lin, init_values_lam_tv(0.), BRRT_tv_pp, target_values_1_=target_values_1_tv, ntimes=ntimes, title="Canoe BRRT TV (Linear)", plot_bcs=True)
 
 # Nonlinear
 # BRAT_values, BRAT_fig = solveplot(diffgame_nlin, init_values, BRAT_ball_pp, title="Canoe BRAT Ball (Nonlinear)", plot_reach_solid=False, plot_avoid_solid=False, plot_bcs=True, plot_no_value=False)
@@ -466,32 +541,126 @@ reach_values_tv, BRRT_fig = solveplot(diffgame_lin, init_values_lam_tv(0.), BRRT
 # %%
 
 ## Two-Target (TV) - BRRT lambda panel
-lams=[-1., -0.2, 0., 0.2, 1.]
 
 ## Linear
-BRRT_values_lam_lin_tv, times = solve_BRRTpanel(diffgame_lin, init_values_lam_tv, reach_values_1_tv, reach_values_2, lams, target_values_1_tv, target_values_2) 
+BRRT_values_lam_lin_tv, times = solve_BRRTpanel(diffgame_lin, init_values_lam_tv, reach_values_1_tv, reach_values_2, lambdas, target_values_1_tv, target_values_2) 
 
 # ## Nonlnear
-# BRAAT_values_lam_nlin_tv, times = solve_BRAATpanel(diffgame_nlin, init_values_reachavoid_ball_lam, BAT_values_nlin_ball_full, lams, reach_values, avoid_values_ball)
+# BRAAT_values_lam_nlin_tv, times = solve_BRAATpanel(diffgame_nlin, init_values_reachavoid_ball_lam, BAT_values_nlin_ball_full, lambdas, reach_values, avoid_values_ball)
 
 ## Plot
-BRRT_lam_lin_tv_fig = plot_BRRTpanel(BRRT_values_lam_lin_tv, lams, times, -1, target_values_1_tv, target_values_2)
-# BRRT_lam_nlin_fig = plot_BRRTpanel(BRRT_values_lam_nlin, lams, times, -1)
+BRRT_lam_lin_tv_fig = plot_BRRTpanel(BRRT_values_lam_lin_tv, lambdas, times, -1, target_values_1_tv, target_values_2)
+# BRRT_lam_nlin_fig = plot_BRRTpanel(BRRT_values_lam_nlin, lambdas, times, -1)
 
 # %%
 
 ## Two-Target (TV) - BRRT lambda panel anim
 
 ## Linear
-BRRT_lam_lin_tv_anim = anim_BRRTpanel(BRRT_values_lam_lin_tv, lams, times, -1, target_values_1_tv, target_values_2, bounce=True)
+BRRT_lam_lin_tv_anim = anim_BRRTpanel(BRRT_values_lam_lin_tv, lambdas, times, -1, target_values_1_tv, target_values_2, bounce=True)
 # HTML(BRRT_lam_lin_tv_anim.to_jshtml())
 
-BRRT_lam_lin_tv_anim.save('BRRT_lam_lin_tv2_anim.mp4', writer='ffmpeg', fps=25)
+# BRRT_lam_lin_tv_anim.save('Canoe2D_BRRT_lam_lin_tv_anim.mp4', writer='ffmpeg', fps=25)
 
 # ## Nonlinear
-# BRAAT_lam_nlin_anim = anim_BRRTpanel(BRAAT_values_lam_nlin, lams, times, -1, bounce=True)
+# BRAAT_lam_nlin_anim = anim_BRRTpanel(BRAAT_values_lam_nlin, lambdas, times, -1, bounce=True)
 # HTML(BRAAT_lam_nlin_anim.to_jshtml())
 
-# # BRAAT_lam_nlin_anim.save('BRAAT_lam_ball_nlin_anim.mp4', writer='ffmpeg', fps=25)
+# # BRAAT_lam_nlin_anim.save('Canoe2D_BRAAT_lam_ball_nlin_anim.mp4', writer='ffmpeg', fps=25)
 
 # %%
+
+## Save
+import os
+
+sys_f = "Canoe"
+bd_tag, bd_f = ("bdbc", "bounded") if bounded_bc else ("ubdbc", "unbounded")
+base_tag = f"{sys_f}2D_BRRT"
+f_path = f"{sys_f}/solutions/{bd_f}"
+f_path_figs = f"{sys_f}/figs/{bd_f}"
+os.makedirs(f_path, exist_ok=True)
+os.makedirs(f_path_figs, exist_ok=True)
+
+np.savez_compressed(sys_f + f"/{sys_f}2D_base_params.npz", times=times, lbs=lbs, ubs=ubs, grid_pad=grid_pad, grid_L=grid_L)
+
+reduced_type = np.float16
+
+# Reach 1
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_V1.npz", V1=reach_values_1.astype(reduced_type))
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_tv_V1.npz", V1=reach_values_1_tv.astype(reduced_type))
+
+# Reach 2
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_V2.npz", V2=reach_values_2.astype(reduced_type))
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_tv_V2.npz", V2=reach_values_2.astype(reduced_type))
+
+# Reach-Reach
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_V.npz", V=reach_values_stat.astype(reduced_type))
+np.savez_compressed(f_path + f"/{base_tag}_{bd_tag}_tv_V.npz", V=reach_values_tv.astype(reduced_type))
+
+# %%
+
+# Figures
+BRT_fig_1.savefig(f_path_figs + f'/{base_tag}_{bd_tag}_BRT_1')
+BRT_fig_1_tv.savefig(f_path_figs + f'/{base_tag}_{bd_tag}_tv_BRT_1')
+
+BRT_fig_2.savefig(f_path_figs + f'/{base_tag}_{bd_tag}_BRT_2')
+
+BRRT_fig.savefig(f_path_figs + f'/{base_tag}_{bd_tag}_BRRT')
+BRRT_fig_tv.savefig(f_path_figs + f'/{base_tag}_{bd_tag}_tv_BRRT')
+
+# Animations
+BRRT_lam_lin_stat_anim.save(f_path_figs + f'/{base_tag}_{bd_tag}_lam_anim.mp4', writer='ffmpeg', fps=25)
+BRRT_lam_lin_tv_anim.save(f_path_figs + f'/{base_tag}_{bd_tag}_lam_tv_anim.mp4', writer='ffmpeg', fps=25)
+
+# %%
+
+# ## Interpolation test
+
+# test_values = reach_values
+# test_times_coordinates = times
+# sample_size = 10000
+
+# rand_ix_sample = np.round((grid.states.shape[0] ** 2) * np.random.rand(sample_size)).astype(int)
+# test_states_exact = grid.states.reshape(-1,2)[rand_ix_sample, :]
+# test_itp_times = -1. * jnp.ones_like(test_states_exact[:, 0:1])
+# test_time_states = jnp.concatenate((test_itp_times, test_states_exact),1)
+
+# test_states_inexact = jnp.array((grid.domain.hi - grid.domain.lo) * np.random.rand(sample_size,2) + grid.domain.lo)
+# test_time_states_inexact = jnp.concatenate((test_itp_times, test_states_inexact),1)
+
+# ti = 50 # time = -1.
+# test_old_exact_itps = jnp.zeros(sample_size)
+# test_old_exact_itps_grads = jnp.zeros((sample_size, grid.ndim))
+# test_old_inexact_itps = jnp.zeros(sample_size)
+# test_old_inexact_itps_grads = jnp.zeros((sample_size, grid.ndim))
+
+# # Batched method
+# import time
+# start = time.time()
+
+# test_exact_itps, test_exact_itp_grads = grid.interpolate_timespace_batch(test_values, test_times_coordinates, test_time_states)
+# test_inexact_itps, test_inexact_itp_grads = grid.interpolate_timespace_batch(test_values, test_times_coordinates, test_time_states_inexact)
+
+# time_batch = time.time() - start
+
+# # Old
+# start = time.time()
+
+# for si in range(sample_size):
+#     test_old_exact_itps = test_old_exact_itps.at[si].set(grid.interpolate(test_values[ti, ...], state=test_states_exact[si,:]))
+#     test_old_inexact_itps = test_old_inexact_itps.at[si].set(grid.interpolate(test_values[ti, ...], state=test_states_inexact[si,:]))
+
+#     test_old_exact_itps_grads = test_old_exact_itps_grads.at[si,:].set(grid.interpolate(grid.grad_values(test_values[ti,...]), state=test_states_exact[si,:]))
+#     test_old_inexact_itps_grads = test_old_inexact_itps_grads.at[si,:].set(grid.interpolate(grid.grad_values(test_values[ti,...]), state=test_states_inexact[si,:]))
+
+# time_old = time.time() - start
+
+# print("MSE of value on itp pts", jnp.sqrt(jnp.square(jnp.abs(test_old_exact_itps - test_exact_itps).sum(-1))))
+# print("MSE of value off itp pts", jnp.sqrt(jnp.square(jnp.abs(test_old_inexact_itps - test_inexact_itps).sum(-1))))
+
+# print("MSE of grads on itp pts", jnp.sqrt(jnp.square(jnp.abs(test_old_exact_itps_grads - test_exact_itp_grads[:,1:]).sum(-1))).mean())
+# print("MSE of grads off itp pts", jnp.sqrt(jnp.square(jnp.abs(test_old_inexact_itps_grads - test_inexact_itp_grads[:,1:]).sum(-1))).mean())
+
+# print(f"Time of batched {time_batch:.2f} vs. old {time_old:.2f}")
+
+# # %%
